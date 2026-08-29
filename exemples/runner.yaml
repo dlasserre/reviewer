@@ -1,4 +1,4 @@
-# MODELE. Copier en `runner.yaml`, ou laisser `agent-runner-lg init` l'ecrire.
+# MODELE. Copier en `runner.yaml` A LA RACINE, ou laisser `agent-runner-lg init` l'ecrire.
 # `runner.yaml` n'est pas versionne : il decrit UNE installation.
 
 # La MACHINE, pas les projets. Un seul de ces fichiers, jamais copie.

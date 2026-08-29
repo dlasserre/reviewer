@@ -1,4 +1,8 @@
-# MODELE de profil. Un fichier par projet ; copier suffit a en ajouter un,
+# MODELE de profil. Copier dans `profils/<projet>.yaml`.
+#
+# PAS dans `profils/` tel quel : `load_profiles` prend TOUS les YAML de
+# ce dossier, et un modele y deviendrait un second projet — avec des
+# chemins qui n existent pas, et deux demons sur les memes depots.
 # le moteur n'est pas touche. Les profils reels ne sont pas versionnes.
 
 # Le projet « exemple ». Copier ce fichier suffit a ajouter un projet :

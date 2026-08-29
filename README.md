@@ -86,7 +86,7 @@ le disque — remplacer `- repos:/repos` par `- ${REPOS}:/repos` dans le compose
 |---|---|
 | **Secrets** | pas de trousseau : les references doivent etre `env:NOM`, alimentees par le `.env` |
 | **Chemins** | le profil reste ECRIT POUR L'HOTE ; `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
-| **`runner.yaml`** | celui du conteneur n'est pas celui d'un poste : etat sous `/var/agent-runner`, `bind: 0.0.0.0` avec `reseau_confine: true`. `runner.exemple.yaml` est ecrit pour ca |
+| **`runner.yaml`** | celui du conteneur n'est pas celui d'un poste : etat sous `/var/agent-runner`, `bind: 0.0.0.0` avec `reseau_confine: true`. `exemples/runner.yaml` est ecrit pour ca |
 
 ## Configuration
 

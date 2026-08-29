@@ -6,12 +6,13 @@
 # depot public, ce sont des informations internes qui n'ont aucune raison de
 # sortir.
 #
-# Les modeles, eux, sont versionnes : `runner.exemple.yaml` et
-# `profils/exemple.yaml`. Ils sont produits par les memes fonctions que
+# Les modeles vivent dans `exemples/`, et SURTOUT PAS dans `profils/` :
+# `load_profiles` prend TOUS les YAML de ce dossier, donc un modele y devient un
+# second projet — avec des chemins qui n'existent pas, et deux demons sur les
+# memes depots. Ils sont produits par les memes fonctions que
 # `agent-runner-lg init`, donc ils ne peuvent pas deriver de ce qu'il ecrit.
 runner.yaml
 profils/*.yaml
-!profils/exemple.yaml
 
 # Les secrets. Meme par accident.
 .env
