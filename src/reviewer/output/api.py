@@ -74,6 +74,10 @@ def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         # a le droit d'ecrire ?
         return {
             "ok": True,
+            # DIT explicitement. La page d'installation attend ce drapeau pour
+            # savoir que le demon est reparti : le deduire de l'absence d'une
+            # cle marcherait aujourd'hui et casserait au premier champ ajoute.
+            "configured": True,
             "writes_enabled": runner.writes_enabled,
             "max_parallel": runner.max_parallel,
             "profiles": sorted(profils),

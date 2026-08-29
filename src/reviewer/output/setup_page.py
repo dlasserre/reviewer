@@ -268,11 +268,7 @@ function suivre() {
     let e; try { e = JSON.parse(m.data); } catch { return; }
     if (e.genre === "fin") {
       flux.close();
-      // Le demon relit sa configuration au demarrage : c'est lui qui doit
-      // repartir, pas la page qui doit faire semblant.
-      fil.insertAdjacentHTML("beforeend",
-        '<div class="l termine"><span class="q">suite</span>'
-        + '<span class="t">Relancer le conteneur : docker compose restart</span></div>');
+      attendreLeDemon();
       return;
     }
     const cls = {ok: "ok", erreur: "erreur", etape: "etape2", termine: "termine"}[e.genre] || "";
@@ -281,6 +277,39 @@ function suivre() {
       + `<span class="t">${e.texte}</span></div>`);
     fil.scrollTop = fil.scrollHeight;
   };
+}
+
+// Le demon s'arrete une fois la configuration ecrite, et `restart: unless-stopped`
+// le releve — configure. On ne recharge donc pas tout de suite : on ATTEND qu'il
+// reponde, sinon on afficherait une page morte le temps qu'il reparte.
+async function attendreLeDemon() {
+  const fil = $("#fil");
+  const dire = (cls, q, t) => {
+    fil.insertAdjacentHTML("beforeend",
+      `<div class="l ${cls}"><span class="q">${q}</span><span class="t">${t}</span></div>`);
+    fil.scrollTop = fil.scrollHeight;
+  };
+  if (document.querySelector("#erreur-vue")) return;
+  dire("etape2", "attente", "Le demon redemarre\u2026");
+
+  // 60 tentatives d'une seconde : un `npm ci` fini, le demarrage tient en
+  // quelques secondes. Au-dela, ce n'est plus de la lenteur.
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const r = await fetch("/health", {cache: "no-store"});
+      if (r.ok && (await r.json()).configured) {
+        dire("termine", "pret", "Console disponible. Redirection\u2026");
+        setTimeout(() => location.replace("/"), 700);
+        return;
+      }
+    } catch { /* le demon est en train de tomber : c'est attendu */ }
+  }
+  // Personne ne l'a releve : lancement a la main, ou politique de redemarrage
+  // absente. On le dit seulement maintenant — apres avoir vraiment attendu.
+  dire("erreur", "suite",
+       "Le demon n'est pas reparti. En conteneur : docker compose up -d. "
+       + "Sinon, relancer la commande `serve`.");
 }
 </script>
 </body>
