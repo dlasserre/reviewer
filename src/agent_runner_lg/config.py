@@ -837,6 +837,22 @@ class ProfileConfig(Strict):
         return v
 
     def model_post_init(self, _ctx: Any) -> None:
+        # ── L'echappatoire du conteneur ────────────────────────────────────
+        #
+        # Un profil est portable partout SAUF sur une ligne : `workspace`, qui
+        # dit ou les copies locales vivent sur CETTE machine. En conteneur elles
+        # sont sous `/repos`, sur un poste elles sont ailleurs.
+        #
+        # Dupliquer le profil pour cette seule ligne le ferait deriver, et
+        # charger les deux serait pire : `load_profiles` prend TOUS les YAML du
+        # dossier, donc deux profils sur les memes depots, donc deux demons qui
+        # se marchent dessus.
+        #
+        # La variable ne vaut que pour `workspace`. Tout le reste du profil —
+        # depots, verifications, relecteurs, perimetre — est identique partout.
+        if racine := os.environ.get("AGENT_RUNNER_WORKSPACE", "").strip():
+            object.__setattr__(self, "workspace", Path(racine))
+
         # `{workspace}` est resolu APRES validation, pour que le fichier reste
         # lisible : un chemin de depot s'ecrit relativement au projet.
         object.__setattr__(self, "workspace", self.workspace.expanduser())

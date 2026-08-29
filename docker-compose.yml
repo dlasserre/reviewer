@@ -38,6 +38,11 @@ services:
       # traine ferait basculer la facturation vers l'API payante, en silence. Le
       # demon l'efface deja pour l'agent ; on ne la laisse pas entrer.
       ANTHROPIC_API_KEY: ""
+      # La SEULE ligne d'un profil qui ne soit pas portable : ou vivent les
+      # copies locales. Ici elles sont sous /repos ; sur un poste elles sont
+      # ailleurs. Cette variable evite de dupliquer le profil pour cette seule
+      # ligne — un doublon derive, et celui qu'on oublie est celui qui tourne.
+      AGENT_RUNNER_WORKSPACE: /repos
 
     volumes:
       # La configuration, en LECTURE SEULE. Le YAML est la frontiere de securite
@@ -46,9 +51,13 @@ services:
       - ./runner.yaml:/config/runner.yaml:ro
       - ./profils:/config/profils:ro
 
-      # Vos depots. Les chemins DANS le profil doivent etre ceux du conteneur
-      # (/repos/<nom>), pas ceux de l'hote.
-      - ${REPOS:-./repos}:/repos
+      # Vos depots, montes depuis l'hote. `REPOS` doit pointer le dossier qui
+      # les CONTIENT — pas un depot. Sans lui, compose monte un `./repos` vide
+      # qu'il vient de creer, et le conteneur ne trouve rien.
+      #
+      # Les chemins du profil restent ecrits pour l'hote : `AGENT_RUNNER_WORKSPACE`
+      # les reecrit au chargement.
+      - ${REPOS:?REPOS doit pointer le dossier qui contient vos depots}:/repos
 
       # L'etat : baux, journaux, points de reprise, worktrees, configuration
       # Claude. Un volume nomme, donc il survit a une reconstruction d'image.
@@ -68,7 +77,7 @@ services:
     profiles: ["outils"]
     entrypoint: ["/bin/bash"]
     volumes:
-      - ${REPOS:-./repos}:/repos
+      - ${REPOS:?REPOS doit pointer le dossier qui contient vos depots}:/repos
       - var:/var/agent-runner
     working_dir: /repos
 

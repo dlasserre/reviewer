@@ -62,7 +62,17 @@ Deux autres differences en conteneur :
 | | |
 |---|---|
 | **Secrets** | pas de trousseau : les references doivent etre `env:NOM`, alimentees par le `.env` |
-| **Chemins** | ceux du profil sont ceux du CONTENEUR (`/repos/<nom>`), pas ceux de l'hote |
+| **Chemins** | le profil reste ECRIT POUR L'HOTE. `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
+
+`REPOS` doit pointer le dossier qui **contient** vos depots, pas un depot. Sans
+lui, compose refuse de demarrer en le disant — plutot que de monter un dossier
+vide qu'il vient de creer, ou le conteneur ne trouverait rien.
+
+Le profil n'a donc pas a etre duplique pour le conteneur, et c'est voulu : deux
+fichiers pour une seule ligne differente derivent, et celui qu'on oublie est
+celui qui tourne. Les charger tous les deux serait pire — `load_profiles` prend
+TOUS les YAML du dossier, donc deux profils sur les memes depots, donc deux
+demons qui se marchent dessus.
 
 ## Configuration
 

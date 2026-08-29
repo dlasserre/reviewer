@@ -8,6 +8,8 @@ impossible.
 
 from __future__ import annotations
 
+import pathlib
+
 import textwrap
 
 import pytest
@@ -452,3 +454,45 @@ per_severity:
     effort: turbo
 """))
     assert "turbo" in str(e.value)
+
+
+# ── L'echappatoire de conteneur sur `workspace` ─────────────────────────────
+#
+# Un profil est portable partout SAUF sur cette ligne. La variable evite de le
+# dupliquer — et un doublon derive, celui qu'on oublie etant celui qui tourne.
+
+
+def _profil_workspace(tmp_path) -> pathlib.Path:
+    (tmp_path / "p.yaml").write_text(textwrap.dedent("""
+        project: essai
+        workspace: C:/postes/moi/code
+        forge:
+          org: UneOrg
+        repos:
+          backend:
+            access: write
+            path: "{workspace}/backend"
+    """), encoding="utf-8")
+    return tmp_path / "p.yaml"
+
+
+def test_sans_variable_le_profil_fait_foi(tmp_path, monkeypatch):
+    monkeypatch.delenv("AGENT_RUNNER_WORKSPACE", raising=False)
+    p = load_profile(_profil_workspace(tmp_path))
+    assert p.repos["backend"].path.as_posix().endswith("postes/moi/code/backend")
+
+
+def test_la_variable_reecrit_les_chemins_des_depots(tmp_path, monkeypatch):
+    # Le cas du conteneur : meme fichier, chemins de l'hote remplaces.
+    monkeypatch.setenv("AGENT_RUNNER_WORKSPACE", "/repos")
+    p = load_profile(_profil_workspace(tmp_path))
+    assert p.repos["backend"].path.as_posix() == "/repos/backend"
+
+
+def test_une_variable_VIDE_ne_reecrit_rien(tmp_path, monkeypatch):
+    # Une variable posee a la chaine vide est une erreur de lancement, pas une
+    # intention — meme regle que pour les secrets. L'ignorer evite de faire
+    # pointer tous les depots sur la racine.
+    monkeypatch.setenv("AGENT_RUNNER_WORKSPACE", "   ")
+    p = load_profile(_profil_workspace(tmp_path))
+    assert p.repos["backend"].path.as_posix().endswith("postes/moi/code/backend")
