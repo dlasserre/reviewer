@@ -8,118 +8,78 @@ propre port (cf. l'en-tete de `runner.yaml`).
 
 ## Installation
 
-### Ce qu'il faut avant
+```bash
+git clone https://github.com/dlasserre/reviewer.git
+cd reviewer
+docker compose up -d
+```
 
-- **Python 3.11+** et **git**.
-- Un jeton de la forge en **lecture** (`repo:read`). Le jeton d'**ecriture** peut
-  attendre : sans lui, l'agent corrige dans son worktree sans rien rendre
-  visible, et c'est un bon premier cran.
-- Un **jeton OAuth Claude** (`CLAUDE_CODE_OAUTH_TOKEN`) : la consommation
-  s'impute sur l'abonnement, pas sur l'API payante.
-- Les toolchains de vos depots (Node, venv…) : le demon lance leurs
-  verifications, il ne commite pas de code dont les tests echouent.
+Puis **<http://127.0.0.1:8788>**.
 
-### En local
+Tant qu'il n'a pas de configuration, le demon sert la page qui permet d'en faire
+une : on colle un jeton GitHub, il le verifie contre la forge, liste les depots,
+on coche ceux qu'on veut. Il clone, installe leurs dependances, ecrit la
+configuration, et repart avec.
+
+Aucun fichier a editer, aucun jeton a poser dans l'environnement, aucun depot a
+cloner a la main.
+
+### Ce qu'il faut quand meme
+
+- **Docker**, et de quoi cloner vos depots (un jeton en **lecture** suffit).
+- Un **jeton OAuth Claude** — la consommation s'impute sur l'abonnement, pas sur
+  l'API payante. Facultatif au demarrage : sans lui le demon observe, il ne code
+  pas.
+- Le jeton d'**ecriture** peut attendre. Sans lui, l'agent corrige dans son
+  worktree sans rien pousser ni repondre : c'est un bon premier cran.
+
+### Sans conteneur
 
 ```bash
 python -m venv .venv
 .venv/bin/pip install -e ".[keyring]"      # Windows : .venv\Scripts\pip.exe
-.venv/bin/reviewer init
+.venv/bin/reviewer -c runner.yaml serve
 ```
 
-`init` pose les questions, **verifie chaque jeton contre la forge**, liste vos
-depots, devine les verifications en lisant `package.json` et `pyproject.toml`,
-puis ecrit `runner.yaml` et `profils/<projet>.yaml`.
+Meme chose : sans configuration, il sert la page d'installation. `reviewer init`
+fait la meme chose en terminal, pour qui prefere.
 
-Rien n'est ecrit avant la derniere question, et un fichier existant est
-sauvegarde a cote avant d'etre remplace.
+Sur un poste, les secrets vont dans le **trousseau du systeme** plutot que dans
+un fichier — la cle est tenue par l'OS, jamais posee dans le dossier du projet.
 
-### En conteneur
-
-Cinq commandes, dans cet ordre.
-
-```bash
-git clone https://github.com/dlasserre/reviewer.git
-cd reviewer
-cp .env.exemple .env                    # 1. y mettre les jetons
-docker compose build                    # 2. construire l'image
-```
-
-**Cloner AVANT de configurer.** L'assistant devine les verifications en lisant
-le `package.json` et le `pyproject.toml` de chaque depot ; sur un `/repos` vide
-il ne devine rien et fait tout saisir a la main.
-
-```bash
-                                        # 3. les depots, dans le volume
-docker compose run --rm outils -lc \
-  "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT
-   cd /repos/DEPOT && npm ci"
-
-docker compose run --rm init            # 4. l'assistant, DANS le conteneur
-docker compose up -d                    # 5. lancer le demon
-```
-
-> **« Permission denied » sur `/repos` ou `/var/agent-runner` ?** Un volume
-> nomme n'herite des droits de l'image qu'a sa PREMIERE utilisation, quand il
-> est encore vide. Un volume cree avant que l'image ne declare ces repertoires
-> reste en `root`, et le conteneur — qui tourne sous un utilisateur non
-> privilegie — ne peut rien y ecrire. Le symptome parle de git (« could not
-> create work tree dir ... Permission denied ») et envoie chercher la cause du
-> mauvais cote. Le supprimer et recommencer :
->
-> ```bash
-> docker compose down -v && docker compose build
-> ```
-
-
-L'assistant reconnait le conteneur et propose les defauts qui vont avec : etat
-sous `/var/agent-runner`, depots sous `/repos`, console ouverte sur le namespace
-reseau. Il verifie chaque jeton contre la forge, liste vos depots, et ecrit
-`runner.yaml` et `profils/<projet>.yaml`.
-
-Console sur <http://127.0.0.1:8788>. Suivre : `docker compose logs -f runner`.
-
-#### Qui a le droit d'ecrire quoi
-
-| Service | `/config` | Pourquoi |
-|---|---|---|
-| `init` | **ecriture** | c'est lui qui produit la configuration |
-| `runner` | lecture seule | le YAML est la frontiere de securite du demon : il dit quels depots sont modifiables et si les ecritures sont armees. Un demon qui pourrait le reecrire n'aurait plus de frontiere |
-
-Le DOSSIER est monte, pas les fichiers un par un : monter `./runner.yaml`
-quand il n'existe pas encore — le cas de tout nouveau venu — fait creer a Docker
-un **repertoire** a sa place, et le demon echoue en disant qu'il ne sait pas lire
-sa configuration. Le symptome ne designe pas la cause.
-
-#### Pourquoi le conteneur ne monte pas vos dossiers
-
-C'est la question naturelle, et elle a une reponse mesuree. Un `npm ci` lance
-dans un conteneur sur un depot **monte depuis l'hote** a remplace son
-`node_modules` Windows par des binaires Linux — plus un seul `.cmd` dans
-`.bin/`, que des liens symboliques. L'environnement de developpement de l'hote
-etait casse, et rien ne l'annoncait : la commande s'etait terminee par
-« added 619 packages ».
-
-Le probleme est structurel, pas accidentel :
-
-- le conteneur est Linux, l'hote souvent non ; `node_modules` et `.venv` ne se
-  partagent pas entre les deux ;
-- le demon a pourtant besoin des dependances **a cote du depot** pour lancer ses
-  verifications — il ne commite pas de code dont les tests echouent.
-
-Deux besoins incompatibles sur les memes fichiers. La seule sortie propre est de
-ne pas les partager : le conteneur clone ce dont il a besoin, chez lui. C'est ce
-que fait n'importe quel agent de CI.
-
-Sur un hote **Linux**, et seulement la, un bind mount reste possible et economise
-le disque — remplacer `- repos:/repos` par `- ${REPOS}:/repos` dans le compose.
-
-#### Deux autres differences
+### Ou atterrit quoi
 
 | | |
 |---|---|
-| **Secrets** | pas de trousseau : les references doivent etre `env:NOM`, alimentees par le `.env` |
-| **Chemins** | un profil ecrit pour un poste reste utilisable : `REVIEWER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
+| `config/` | `runner.yaml`, `profils/<projet>.yaml`, `.secrets.env`. Sur l'HOTE : le YAML se relit, se versionne et se compare dans une revue — enferme dans un volume, il ne se relirait plus |
+| volume `repos` | les clones DU CONTENEUR. Separes des votres : ils portent des dependances Linux qui casseraient un poste Windows ou macOS |
+| volume `var` | baux, journaux, points de reprise, worktrees |
+
+### Les secrets, dits franchement
+
+Les jetons saisis dans la page finissent dans `config/.secrets.env`, **en clair**.
+C'est exactement ce qu'un `.env` expose, ni plus ni moins : il n'y a pas de
+trousseau dans un conteneur, et chiffrer avec une cle que le demon doit pouvoir
+lire ne protegerait de rien — une obfuscation prise pour du chiffrement est pire
+que rien, parce qu'on cesse de se mefier.
+
+Le YAML, lui, ne porte jamais que des references (`env:NOM`) : il reste lisible
+et versionnable sans precaution. Une valeur en clair y est **refusee** a la
+validation.
+
+Un jeton pose dans l'environnement — Docker secrets, variable de service —
+**gagne** sur ce fichier.
+
+### La console peut-elle configurer le demon ?
+
+Seulement tant qu'il n'y a rien a configurer, et c'est garanti par la structure,
+pas par une promesse : le module qui ecrit n'est monte que lorsque `runner.yaml`
+est absent. Une fois la configuration ecrite, le demon sert la console normale,
+qui n'a **aucune** route d'ecriture.
+
+Un agent dont les droits changeraient depuis une page web, sans trace dans
+l'historique, n'aurait plus de droits — il aurait des habitudes. Mais un demon
+qui n'a ni depot, ni jeton, ni armement n'a aucun droit a elargir.
 
 ## Configuration
 

@@ -2,7 +2,7 @@
 
 Quatre commandes, et elles forment une progression :
 
-    init     assistant d'installation : questions, verifications, ecriture
+    init     assistant d'installation en terminal (la console fait pareil)
     check    la configuration est-elle valide, et surtout OPERANTE ?
     status   que ferait le demon, la, maintenant ? (aucune ecriture)
     run      un passage : balayage, puis le graphe sur chaque PR retenue
@@ -61,7 +61,45 @@ _PASTILLE = {
 }
 
 
+def _servir_installation(chemin: Path, port: int = 8788) -> int:
+    """Sans configuration, on sert la page qui permet d'en faire une.
+
+    ── POURQUOI PAS UN ECHEC ───────────────────────────────────────────────
+
+    Un demon qui s'arrete en disant « configuration absente » oblige a savoir,
+    avant meme de l'avoir vu tourner, quel fichier ecrire et avec quoi dedans.
+    Personne ne lance six commandes pour essayer un outil.
+
+    Il demarre donc, et sert la seule chose utile a ce moment-la : de quoi se
+    configurer. La console normale, elle, n'a aucune route d'ecriture — le
+    chemin de code qui ecrit n'existe QUE tant qu'il n'y a rien a proteger.
+    """
+    import uvicorn  # noqa: PLC0415
+
+    from reviewer.bootstrap import en_conteneur  # noqa: PLC0415
+    from reviewer.output.setup import create_setup_app  # noqa: PLC0415
+
+    # En conteneur la frontiere est le namespace reseau, et la publication cote
+    # hote borne l'exposition. Sur un poste, la boucle locale suffit.
+    hote = "0.0.0.0" if en_conteneur() else "127.0.0.1"  # noqa: S104
+    print(f"Aucune configuration en {chemin}.")
+    print(f"Ouvrir http://127.0.0.1:{port} pour installer.")
+    print("Le demon n'a aucun depot, aucun jeton et aucun droit tant que ce")
+    print("n'est pas fait.")
+    try:
+        uvicorn.run(create_setup_app(chemin, port=port), host=hote, port=port,
+                    log_level="warning")
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def _charger(runner_path: Path) -> tuple[RunnerConfig, dict[str, ProfileConfig]]:
+    # Les secrets ecrits par la console vivent a cote de la configuration. Ils
+    # sont charges AVANT elle : c'est eux que ses references `env:NOM` lisent.
+    from reviewer.output.setup import charger_secrets  # noqa: PLC0415
+
+    charger_secrets(runner_path.parent)
     runner = load_runner(runner_path)
     dossier = runner.profiles_dir
     if not dossier.is_absolute():
@@ -713,6 +751,12 @@ def main(argv: list[str] | None = None) -> int:
             print(file=sys.stderr)
             print("Interrompu. Rien n'a ete ecrit.", file=sys.stderr)
             return 130
+
+    # `serve` sans configuration ne s'arrete pas : il sert de quoi en faire une.
+    # Les autres commandes, si — `status` ou `run` sur rien n'auraient aucun sens,
+    # et leur message dit deja quoi lancer.
+    if args.cmd == "serve" and not args.config.exists():
+        return _servir_installation(args.config)
 
     try:
         runner, profils = _charger(args.config)

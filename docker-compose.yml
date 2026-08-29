@@ -1,125 +1,96 @@
 # Le demon de revue.
 #
-#   docker compose build               construire l'image
-#   docker compose run --rm outils     cloner les depots, installer leurs deps
-#   docker compose run --rm init       l'assistant — APRES le clonage, sinon il
-#                                      ne peut pas deviner les verifications
-#   docker compose up -d               lancer le demon
-#   docker compose logs -f runner      le suivre
+#   docker compose up -d      et c'est tout.
 #
-# Les secrets viennent d'un fichier `.env` A COTE de ce fichier, jamais de ce
-# fichier lui-meme : `docker-compose.yml` se versionne, `.env` non.
+# Puis ouvrir http://127.0.0.1:8788 : tant qu'il n'a pas de configuration, le
+# demon sert la page qui permet d'en faire une — jetons, depots, relecteurs. Il
+# clone, installe les dependances, ecrit la configuration, et repart avec.
+#
+# Le `.env` reste possible pour qui prefere : les jetons y sont lus s'ils y sont,
+# et la page ne les redemande pas. Rien n'y est OBLIGATOIRE.
 
-# La construction, ecrite UNE fois. Les deux services la partagent : un service
-# qui nomme une image sans savoir la batir fait tenter un `pull` a compose, et
+# La construction, ecrite UNE fois. Les services la partagent : un service qui
+# nomme une image sans savoir la batir fait tenter un `pull` a compose, et
 # l'erreur — « pull access denied » — n'evoque pas la cause.
 x-construction: &construction
   build:
     context: .
     args:
       # Sous Linux, faire correspondre l'UID a celui de l'hote : l'agent ecrit
-      # dans des worktrees derives de depots montes, et un fichier cree par un
-      # autre UID devient impossible a modifier depuis l'hote.
+      # dans des worktrees, et un fichier cree par un autre UID devient
+      # impossible a modifier depuis l'hote.
       #   UID=$(id -u) GID=$(id -g) docker compose build
       UID: "${UID:-1000}"
       GID: "${GID:-1000}"
   image: reviewer
 
+x-secrets: &secrets
+  # FACULTATIFS. Absents, la page d'installation les demande et les ecrit dans
+  # `config/.secrets.env`. Presents, ils GAGNENT sur ce fichier : un secret
+  # injecte par l'orchestrateur doit primer, sinon on ne sait plus lequel tourne.
+  PAT_READ: "${PAT_READ:-}"
+  PAT_WRITE: "${PAT_WRITE:-}"
+  CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
+  # Le SDK place ANTHROPIC_API_KEY AVANT le jeton OAuth : une variable qui traine
+  # ferait basculer la facturation vers l'API payante, en silence.
+  ANTHROPIC_API_KEY: ""
+  # La SEULE ligne d'un profil qui ne soit pas portable : ou vivent les copies
+  # locales. Ici elles sont dans le volume, sous /repos.
+  REVIEWER_WORKSPACE: /repos
+
 services:
   runner:
     <<: *construction
     restart: unless-stopped
-
-    environment:
-      # Il n'y a PAS de trousseau dans un conteneur : les references de
-      # configuration doivent etre de la forme `env:NOM`. Ces trois variables
-      # viennent du `.env`, et n'apparaissent jamais dans une image.
-      PAT_READ: "${PAT_READ:?le jeton de lecture de la forge est requis}"
-      PAT_WRITE: "${PAT_WRITE:-}"
-      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:?le jeton du SDK est requis}"
-      # Le SDK place ANTHROPIC_API_KEY AVANT le jeton OAuth : une variable qui
-      # traine ferait basculer la facturation vers l'API payante, en silence. Le
-      # demon l'efface deja pour l'agent ; on ne la laisse pas entrer.
-      ANTHROPIC_API_KEY: ""
-      # La SEULE ligne d'un profil qui ne soit pas portable : ou vivent les
-      # copies locales. Ici elles sont sous /repos ; sur un poste elles sont
-      # ailleurs. Cette variable evite de dupliquer le profil pour cette seule
-      # ligne — un doublon derive, et celui qu'on oublie est celui qui tourne.
-      REVIEWER_WORKSPACE: /repos
+    environment: *secrets
 
     volumes:
-      # La configuration, en LECTURE SEULE. Le YAML est la frontiere de securite
-      # du demon : il dit quels depots sont modifiables et si les ecritures sont
-      # armees. Un conteneur qui pourrait le reecrire n'aurait plus de frontiere.
+      # La configuration, EN ECRITURE — c'est la page d'installation qui l'ecrit,
+      # une fois, tant qu'il n'y en a pas. Une fois ecrite, le demon sert la
+      # console normale, qui n'a aucune route d'ecriture : le chemin de code qui
+      # ecrit n'existe QUE tant qu'il n'y a rien a proteger.
       #
-      # Le DOSSIER, pas les fichiers un par un : monter `./runner.yaml` quand il
-      # n'existe pas encore — le cas de tout nouveau venu — fait creer a Docker
-      # un REPERTOIRE a sa place, et le demon echoue en disant qu'il ne sait pas
-      # lire sa configuration. Le symptome ne designe pas la cause.
-      - ./:/config:ro
+      # Un dossier de l'HOTE, pas un volume : le YAML se relit, se versionne et
+      # se compare dans une revue. Enfermé dans un volume, il ne se relirait plus.
+      - ./config:/config
 
-      # Les depots DU CONTENEUR. Un volume, pas un montage de vos dossiers.
-      #
-      # Mesure du 29/08/2026 : avec un bind mount, `npm ci` lance dans le
-      # conteneur a remplace le `node_modules` Windows du depot de l'hote par
-      # des binaires Linux — plus un seul `.cmd` — et l'environnement de
-      # developpement de l'hote etait casse sans que rien ne l'annonce.
-      #
-      # Le probleme est structurel : le conteneur est Linux, l'hote souvent non,
-      # et `node_modules` / `.venv` ne se partagent pas entre les deux. Le demon
-      # a pourtant besoin des dependances a cote du depot pour lancer les
-      # verifications. Deux besoins incompatibles sur les memes fichiers : la
-      # seule sortie propre est de ne pas les partager.
-      #
-      # On peuple ce volume une fois :
-      #   docker compose run --rm outils -lc \
-      #     "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT"
-      #
-      # Sur un hote LINUX, et seulement la, un bind mount reste possible et
-      # economise le disque : remplacer la ligne par `- ${REPOS}:/repos`.
+      # Les depots DU CONTENEUR. Un volume, pas un montage de vos dossiers : le
+      # conteneur est Linux, l'hote souvent non, et `node_modules` / `.venv` ne
+      # se partagent pas entre les deux. Mesure du 29/08/2026 : un `npm ci` dans
+      # le conteneur avait remplace le `node_modules` Windows d'un depot monte.
       - repos:/repos
 
-      # L'etat : baux, journaux, points de reprise, worktrees, configuration
-      # Claude. Un volume nomme, donc il survit a une reconstruction d'image.
+      # L'etat : baux, journaux, points de reprise, worktrees.
       - var:/var/agent-runner
 
     ports:
       # 127.0.0.1 cote HOTE, et c'est ce qui rend l'ecoute sur 0.0.0.0 acceptable
-      # dans le conteneur : la surface exposee est exactement celle d'une ecoute
-      # locale sur la machine. Retirer ce prefixe ouvrirait la console — et
-      # l'etat des jobs — a tout le reseau.
+      # dans le conteneur : la surface exposee est celle d'une ecoute locale.
       - "127.0.0.1:8788:8788"
 
-  # L'assistant d'installation. Le SEUL service qui puisse ECRIRE dans le
-  # dossier du projet, et seulement le temps de repondre aux questions : c'est
-  # lui qui produit `runner.yaml` et `profils/<projet>.yaml`.
-  #
-  # Il reconnait le conteneur et propose les defauts qui vont avec — etat sous
-  # /var/agent-runner, depots sous /repos, console ouverte sur le namespace
-  # reseau. Lance sur un poste, il proposerait autre chose.
-  init:
-    <<: *construction
-    profiles: ["init"]
-    environment:
-      PAT_READ: "${PAT_READ:?le jeton de lecture de la forge est requis}"
-      PAT_WRITE: "${PAT_WRITE:-}"
-      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
-      REVIEWER_WORKSPACE: /repos
-    volumes:
-      - ./:/config
-      - repos:/repos
-    command: ["-c", "/config/runner.yaml", "init"]
-
-  # Un shell dans la MEME image et sur les MEMES volumes, pour cloner les depots
-  # et y installer leurs dependances. Ne demarre jamais tout seul.
+  # Un shell dans la MEME image et sur les MEMES volumes. Utile pour regarder ce
+  # qui a ete clone, relancer une installation de dependances a la main, ou
+  # deboguer. Ne demarre jamais tout seul.
   outils:
     <<: *construction
     profiles: ["outils"]
+    environment: *secrets
     entrypoint: ["/bin/bash"]
     volumes:
+      - ./config:/config
       - repos:/repos
       - var:/var/agent-runner
     working_dir: /repos
+
+  # L'assistant en TERMINAL, pour qui prefere. La page fait la meme chose.
+  init:
+    <<: *construction
+    profiles: ["init"]
+    environment: *secrets
+    volumes:
+      - ./config:/config
+      - repos:/repos
+    command: ["-c", "/config/runner.yaml", "init"]
 
 volumes:
   var:
