@@ -51,13 +51,26 @@ services:
       - ./runner.yaml:/config/runner.yaml:ro
       - ./profils:/config/profils:ro
 
-      # Vos depots, montes depuis l'hote. `REPOS` doit pointer le dossier qui
-      # les CONTIENT — pas un depot. Sans lui, compose monte un `./repos` vide
-      # qu'il vient de creer, et le conteneur ne trouve rien.
+      # Les depots DU CONTENEUR. Un volume, pas un montage de vos dossiers.
       #
-      # Les chemins du profil restent ecrits pour l'hote : `AGENT_RUNNER_WORKSPACE`
-      # les reecrit au chargement.
-      - ${REPOS:?REPOS doit pointer le dossier qui contient vos depots}:/repos
+      # Mesure du 29/08/2026 : avec un bind mount, `npm ci` lance dans le
+      # conteneur a remplace le `node_modules` Windows du depot de l'hote par
+      # des binaires Linux — plus un seul `.cmd` — et l'environnement de
+      # developpement de l'hote etait casse sans que rien ne l'annonce.
+      #
+      # Le probleme est structurel : le conteneur est Linux, l'hote souvent non,
+      # et `node_modules` / `.venv` ne se partagent pas entre les deux. Le demon
+      # a pourtant besoin des dependances a cote du depot pour lancer les
+      # verifications. Deux besoins incompatibles sur les memes fichiers : la
+      # seule sortie propre est de ne pas les partager.
+      #
+      # On peuple ce volume une fois :
+      #   docker compose run --rm outils -lc \
+      #     "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT"
+      #
+      # Sur un hote LINUX, et seulement la, un bind mount reste possible et
+      # economise le disque : remplacer la ligne par `- ${REPOS}:/repos`.
+      - repos:/repos
 
       # L'etat : baux, journaux, points de reprise, worktrees, configuration
       # Claude. Un volume nomme, donc il survit a une reconstruction d'image.
@@ -77,9 +90,12 @@ services:
     profiles: ["outils"]
     entrypoint: ["/bin/bash"]
     volumes:
-      - ${REPOS:?REPOS doit pointer le dossier qui contient vos depots}:/repos
+      - repos:/repos
       - var:/var/agent-runner
     working_dir: /repos
 
 volumes:
   var:
+  # Les clones DU CONTENEUR. Separes de ceux de l'hote, et c'est le point : ils
+  # portent des dependances Linux qui casseraient un poste Windows ou macOS.
+  repos:

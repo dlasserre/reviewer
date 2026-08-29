@@ -37,42 +37,56 @@ sauvegarde a cote avant d'etre remplace.
 ### En conteneur
 
 ```bash
-cp .env.exemple .env          # y mettre les trois jetons
+cp .env.exemple .env          # y mettre les jetons
 UID=$(id -u) GID=$(id -g) docker compose build
+```
+
+**Le conteneur a ses PROPRES clones.** On les depose une fois dans son volume :
+
+```bash
+docker compose run --rm outils -lc \
+  "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT
+   cd /repos/DEPOT && npm ci"
+```
+
+Puis :
+
+```bash
 docker compose up -d
 ```
 
 Console sur <http://127.0.0.1:8788>.
 
-**Le point qui demande de l'attention** : les verifications de vos depots
-tournent DANS le conteneur. Un `node_modules` ou un `.venv` construit sur l'hote
-n'y fonctionne pas — binaires natifs, shims `.cmd` sous Windows, `Scripts/` au
-lieu de `bin/`. Il faut les installer une fois, dans le conteneur :
+#### Pourquoi le conteneur ne monte pas vos dossiers
 
-```bash
-docker compose run --rm outils -lc "cd /repos/frontend && npm ci"
-```
+C'est la question naturelle, et elle a une reponse mesuree. Un `npm ci` lance
+dans un conteneur sur un depot **monte depuis l'hote** a remplace son
+`node_modules` Windows par des binaires Linux — plus un seul `.cmd` dans
+`.bin/`, que des liens symboliques. L'environnement de developpement de l'hote
+etait casse, et rien ne l'annoncait : la commande s'etait terminee par
+« added 619 packages ».
 
-Sans cela l'agent ecrira des correctifs justes et refusera de les commiter, en
-disant « verifications rouges » — un message qui envoie chercher un bug dans le
-code livre.
+Le probleme est structurel, pas accidentel :
 
-Deux autres differences en conteneur :
+- le conteneur est Linux, l'hote souvent non ; `node_modules` et `.venv` ne se
+  partagent pas entre les deux ;
+- le demon a pourtant besoin des dependances **a cote du depot** pour lancer les
+  verifications — il ne commite pas de code dont les tests echouent.
+
+Deux besoins incompatibles sur les memes fichiers. La seule sortie propre est de
+ne pas les partager : le conteneur clone ce dont il a besoin, chez lui. C'est ce
+que fait n'importe quel agent de CI.
+
+Sur un hote **Linux**, et seulement la, un bind mount reste possible et economise
+le disque — remplacer `- repos:/repos` par `- ${REPOS}:/repos` dans le compose.
+
+#### Trois autres differences
 
 | | |
 |---|---|
 | **Secrets** | pas de trousseau : les references doivent etre `env:NOM`, alimentees par le `.env` |
-| **Chemins** | le profil reste ECRIT POUR L'HOTE. `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
-
-`REPOS` doit pointer le dossier qui **contient** vos depots, pas un depot. Sans
-lui, compose refuse de demarrer en le disant — plutot que de monter un dossier
-vide qu'il vient de creer, ou le conteneur ne trouverait rien.
-
-Le profil n'a donc pas a etre duplique pour le conteneur, et c'est voulu : deux
-fichiers pour une seule ligne differente derivent, et celui qu'on oublie est
-celui qui tourne. Les charger tous les deux serait pire — `load_profiles` prend
-TOUS les YAML du dossier, donc deux profils sur les memes depots, donc deux
-demons qui se marchent dessus.
+| **Chemins** | le profil reste ECRIT POUR L'HOTE ; `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
+| **`runner.yaml`** | celui du conteneur n'est pas celui d'un poste : etat sous `/var/agent-runner`, `bind: 0.0.0.0` avec `reseau_confine: true`. `runner.exemple.yaml` est ecrit pour ca |
 
 ## Configuration
 
