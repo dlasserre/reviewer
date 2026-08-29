@@ -13,7 +13,7 @@ regardent le FICHIER, pas seulement l'objet.
 
 from __future__ import annotations
 
-from agent_runner_lg.output.events import Event, Journal
+from reviewer.output.events import Event, Journal
 
 
 def test_ce_qui_est_emis_est_rendu(tmp_path):

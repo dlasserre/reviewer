@@ -27,11 +27,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from agent_runner_lg.agent.run import run_agent
-from agent_runner_lg.config import ProfileConfig, RunnerConfig
-from agent_runner_lg.output.events import Journal
-from agent_runner_lg.repo.worktree import WorktreeManager
-from agent_runner_lg.store.leases import StateStore
+from reviewer.agent.run import run_agent
+from reviewer.config import ProfileConfig, RunnerConfig
+from reviewer.output.events import Journal
+from reviewer.repo.worktree import WorktreeManager
+from reviewer.store.leases import StateStore
 
 __all__ = ["Deps"]
 

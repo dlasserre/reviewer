@@ -69,5 +69,5 @@ EXPOSE 8788
 HEALTHCHECK --interval=60s --timeout=10s --start-period=20s --retries=3 \
   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8788/health', timeout=5).status==200 else 1)"
 
-ENTRYPOINT ["agent-runner-lg"]
+ENTRYPOINT ["reviewer"]
 CMD ["-c", "/config/runner.yaml", "serve"]

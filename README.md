@@ -1,4 +1,4 @@
-# agent-runner-langgraph
+# reviewer
 
 Le demon de revue, pilote par un graphe [LangGraph](https://langchain-ai.github.io/langgraph/).
 
@@ -24,7 +24,7 @@ propre port (cf. l'en-tete de `runner.yaml`).
 ```bash
 python -m venv .venv
 .venv/bin/pip install -e ".[keyring]"      # Windows : .venv\Scripts\pip.exe
-.venv/bin/agent-runner-lg init
+.venv/bin/reviewer init
 ```
 
 `init` pose les questions, **verifie chaque jeton contre la forge**, liste vos
@@ -43,22 +43,26 @@ git clone https://github.com/dlasserre/reviewer.git
 cd reviewer
 cp .env.exemple .env                    # 1. y mettre les jetons
 docker compose build                    # 2. construire l'image
-docker compose run --rm init            # 3. l'assistant, DANS le conteneur
+```
+
+**Cloner AVANT de configurer.** L'assistant devine les verifications en lisant
+le `package.json` et le `pyproject.toml` de chaque depot ; sur un `/repos` vide
+il ne devine rien et fait tout saisir a la main.
+
+```bash
+                                        # 3. les depots, dans le volume
+docker compose run --rm outils -lc \
+  "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT
+   cd /repos/DEPOT && npm ci"
+
+docker compose run --rm init            # 4. l'assistant, DANS le conteneur
+docker compose up -d                    # 5. lancer le demon
 ```
 
 L'assistant reconnait le conteneur et propose les defauts qui vont avec : etat
 sous `/var/agent-runner`, depots sous `/repos`, console ouverte sur le namespace
 reseau. Il verifie chaque jeton contre la forge, liste vos depots, et ecrit
 `runner.yaml` et `profils/<projet>.yaml`.
-
-```bash
-                                        # 4. cloner les depots dans le volume
-docker compose run --rm outils -lc \
-  "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT
-   cd /repos/DEPOT && npm ci"
-
-docker compose up -d                    # 5. lancer le demon
-```
 
 Console sur <http://127.0.0.1:8788>. Suivre : `docker compose logs -f runner`.
 
@@ -102,7 +106,7 @@ le disque — remplacer `- repos:/repos` par `- ${REPOS}:/repos` dans le compose
 | | |
 |---|---|
 | **Secrets** | pas de trousseau : les references doivent etre `env:NOM`, alimentees par le `.env` |
-| **Chemins** | un profil ecrit pour un poste reste utilisable : `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
+| **Chemins** | un profil ecrit pour un poste reste utilisable : `REVIEWER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
 
 ## Configuration
 
@@ -118,7 +122,7 @@ n'est pas touche.
 ### Cinq regles qui portent le reste
 
 1. **Aucun secret dans le YAML.** Uniquement des references, resolues au moment
-   de l'usage : `env:PAT_WRITE` ou `keyring:agent-runner-lg/PAT_WRITE`. Une
+   de l'usage : `env:PAT_WRITE` ou `keyring:reviewer/PAT_WRITE`. Une
    valeur en clair est **refusee** a la validation.
 2. **Cle inconnue = erreur.** Un `acces:` mal orthographie refuse de demarrer au
    lieu de retomber sur un defaut permissif.
@@ -164,11 +168,11 @@ comprise — sinon on croirait tourner sur le modele demande alors que non.
 ### Les commandes
 
 ```bash
-agent-runner-lg -c runner.yaml init      # l'assistant
-agent-runner-lg -c runner.yaml check     # valide, et dit ce qui manque pour AGIR
-agent-runner-lg -c runner.yaml status    # ce que le demon ferait, sans rien faire
-agent-runner-lg -c runner.yaml run       # un passage
-agent-runner-lg -c runner.yaml serve     # le demon + la console
+reviewer -c runner.yaml init      # l'assistant
+reviewer -c runner.yaml check     # valide, et dit ce qui manque pour AGIR
+reviewer -c runner.yaml status    # ce que le demon ferait, sans rien faire
+reviewer -c runner.yaml run       # un passage
+reviewer -c runner.yaml serve     # le demon + la console
 ```
 
 `status` avant d'armer, toujours : on observe d'abord.
@@ -207,7 +211,7 @@ scope:
     - moi          # ne traiter que les PR que J'AI ouvertes
 ```
 
-`agent-runner-lg init` le propose par defaut, avec le compte du jeton de lecture.
+`reviewer init` le propose par defaut, avec le compte du jeton de lecture.
 
 Une liste **vide** prend toutes les PR. C'est le bon reglage dans un seul cas :
 un demon **unique**, partage par une equipe, tournant sous une identite de
@@ -221,7 +225,7 @@ cause.
 git clone git@github.com:dlasserre/reviewer.git
 cd reviewer
 python -m venv .venv && .venv/bin/pip install -e ".[keyring]"
-.venv/bin/agent-runner-lg init
+.venv/bin/reviewer init
 ```
 
 L'assistant demande ses jetons, les verifie contre la forge, liste les depots
@@ -256,7 +260,7 @@ Le perimetre ne les regle pas, et ils changent ce que voient les autres.
 
 Les briques deplacees le sont **verbatim** : meme code, memes commentaires, memes
 invariants. Seuls leurs imports sont reecrits, en **absolu**
-(`from agent_runner_lg.rules.machine import ...`) — avec sept dossiers, un
+(`from reviewer.rules.machine import ...`) — avec sept dossiers, un
 `from ..rules.machine import` obligerait a compter les niveaux pour savoir d'ou
 vient une brique.
 

@@ -24,21 +24,21 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from agent_runner_lg.agent.trust import ensure_trusted, untrusted
-from agent_runner_lg.config import (EFFORTS, Access, ConfigError, MoteurConfig,
+from reviewer.agent.trust import ensure_trusted, untrusted
+from reviewer.config import (EFFORTS, Access, ConfigError, MoteurConfig,
                                     ProfileConfig, RunnerConfig, load_profiles,
                                     load_runner)
-from agent_runner_lg.forge.reader import GitHubReader
-from agent_runner_lg.forge.writer import GitHubWriter
-from agent_runner_lg.graph.build import construire, lancer_job
-from agent_runner_lg.graph.deps import Deps
-from agent_runner_lg.graph.sweep import (Outcome, SweepReport, ordonnancer,
+from reviewer.forge.reader import GitHubReader
+from reviewer.forge.writer import GitHubWriter
+from reviewer.graph.build import construire, lancer_job
+from reviewer.graph.deps import Deps
+from reviewer.graph.sweep import (Outcome, SweepReport, ordonnancer,
                                          sweep_profile)
-from agent_runner_lg.output.events import Event, Journal, new_job_id
-from agent_runner_lg.repo.worktree import WorktreeManager, segments_caches
-from agent_runner_lg.rules.machine import (Action, Severity, State,
+from reviewer.output.events import Event, Journal, new_job_id
+from reviewer.repo.worktree import WorktreeManager, segments_caches
+from reviewer.rules.machine import (Action, Severity, State,
                                            compile_ignored)
-from agent_runner_lg.store.leases import StateStore
+from reviewer.store.leases import StateStore
 
 # Sous Windows la console est en cp1252 : sans cela, la moindre fleche fait
 # echouer l'ecriture, donc toute la sortie. `stderr` AUSSI — c'est la que
@@ -423,7 +423,7 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
     """
     import uvicorn  # noqa: PLC0415
 
-    from agent_runner_lg.output.api import create_app  # noqa: PLC0415
+    from reviewer.output.api import create_app  # noqa: PLC0415
 
     store = StateStore(runner.state_db)
     journal = Journal(runner.logs_dir)
@@ -668,7 +668,7 @@ def _diagnostic(profile: ProfileConfig, runner: RunnerConfig) -> list[str]:
 # ── entree ──────────────────────────────────────────────────────────────────
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="agent-runner-lg", description=__doc__)
+    p = argparse.ArgumentParser(prog="reviewer", description=__doc__)
     p.add_argument("-c", "--config", type=Path, default=Path("runner.yaml"),
                    help="chemin de runner.yaml (defaut : ./runner.yaml)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -705,7 +705,7 @@ def main(argv: list[str] | None = None) -> int:
         # AVANT `_charger` : c'est `init` qui cree le fichier qu'on chargerait,
         # et exiger une configuration valide pour lancer l'assistant qui la
         # produit serait un cercle.
-        from agent_runner_lg.bootstrap import Abandon, assistant  # noqa: PLC0415
+        from reviewer.bootstrap import Abandon, assistant  # noqa: PLC0415
 
         try:
             return assistant(args.config)

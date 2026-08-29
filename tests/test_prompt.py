@@ -11,9 +11,9 @@ import re
 
 import pytest
 
-from agent_runner_lg.repo.checks import CheckOutcome, CheckReport
-from agent_runner_lg.rules.machine import PullSnapshot, Thread
-from agent_runner_lg.agent.prompt import build_debt_proposal, build_fix_prompt
+from reviewer.repo.checks import CheckOutcome, CheckReport
+from reviewer.rules.machine import PullSnapshot, Thread
+from reviewer.agent.prompt import build_debt_proposal, build_fix_prompt
 
 PR = PullSnapshot(number=714, repo="backend", head_sha="0584d4e")
 

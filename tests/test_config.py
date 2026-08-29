@@ -14,7 +14,7 @@ import textwrap
 
 import pytest
 
-from agent_runner_lg.config import (
+from reviewer.config import (
     Access,
     ConfigError,
     SecretRef,
@@ -23,7 +23,7 @@ from agent_runner_lg.config import (
     load_runner,
     parse_duration,
 )
-from agent_runner_lg.rules.machine import Severity
+from reviewer.rules.machine import Severity
 
 RUNNER_MINIMAL = """
 worktrees_root: C:/tmp/wt
@@ -477,14 +477,14 @@ def _profil_workspace(tmp_path) -> pathlib.Path:
 
 
 def test_sans_variable_le_profil_fait_foi(tmp_path, monkeypatch):
-    monkeypatch.delenv("AGENT_RUNNER_WORKSPACE", raising=False)
+    monkeypatch.delenv("REVIEWER_WORKSPACE", raising=False)
     p = load_profile(_profil_workspace(tmp_path))
     assert p.repos["backend"].path.as_posix().endswith("postes/moi/code/backend")
 
 
 def test_la_variable_reecrit_les_chemins_des_depots(tmp_path, monkeypatch):
     # Le cas du conteneur : meme fichier, chemins de l'hote remplaces.
-    monkeypatch.setenv("AGENT_RUNNER_WORKSPACE", "/repos")
+    monkeypatch.setenv("REVIEWER_WORKSPACE", "/repos")
     p = load_profile(_profil_workspace(tmp_path))
     assert p.repos["backend"].path.as_posix() == "/repos/backend"
 
@@ -493,6 +493,6 @@ def test_une_variable_VIDE_ne_reecrit_rien(tmp_path, monkeypatch):
     # Une variable posee a la chaine vide est une erreur de lancement, pas une
     # intention — meme regle que pour les secrets. L'ignorer evite de faire
     # pointer tous les depots sur la racine.
-    monkeypatch.setenv("AGENT_RUNNER_WORKSPACE", "   ")
+    monkeypatch.setenv("REVIEWER_WORKSPACE", "   ")
     p = load_profile(_profil_workspace(tmp_path))
     assert p.repos["backend"].path.as_posix().endswith("postes/moi/code/backend")

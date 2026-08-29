@@ -46,23 +46,23 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
-from agent_runner_lg.agent.guard import Guard
-from agent_runner_lg.agent.prompt import build_fix_prompt
-from agent_runner_lg.config import Access
-from agent_runner_lg.forge import actions
-from agent_runner_lg.forge.base import ForgeError
-from agent_runner_lg.graph.deps import Deps
-from agent_runner_lg.graph.state import JobState
-from agent_runner_lg.graph.sweep import avec_etat_local
-from agent_runner_lg.output.events import Event
-from agent_runner_lg.repo.checks import run_checks
-from agent_runner_lg.repo.git import GitError, commit_all, diff_stat, push
-from agent_runner_lg.repo.worktree import WorktreeError
-from agent_runner_lg.rules import verdict as verdict_mod
-from agent_runner_lg.rules.machine import (Action, PullSnapshot, State,
+from reviewer.agent.guard import Guard
+from reviewer.agent.prompt import build_fix_prompt
+from reviewer.config import Access
+from reviewer.forge import actions
+from reviewer.forge.base import ForgeError
+from reviewer.graph.deps import Deps
+from reviewer.graph.state import JobState
+from reviewer.graph.sweep import avec_etat_local
+from reviewer.output.events import Event
+from reviewer.repo.checks import run_checks
+from reviewer.repo.git import GitError, commit_all, diff_stat, push
+from reviewer.repo.worktree import WorktreeError
+from reviewer.rules import verdict as verdict_mod
+from reviewer.rules.machine import (Action, PullSnapshot, State,
                                            compile_ignored, decide,
                                            normalise_login, severite_dominante)
-from agent_runner_lg.rules.verdict import Issue
+from reviewer.rules.verdict import Issue
 
 __all__ = [
     "admit", "arret_sur_exception", "code", "decider", "judge", "notify", "observe",

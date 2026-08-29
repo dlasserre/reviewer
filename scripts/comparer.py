@@ -56,10 +56,10 @@ sys.path.insert(0, str(ORIGINE / "src"))
 
 async def lire_une_fois():
     """Une seule lecture de la forge, partagee par les deux implementations."""
-    from agent_runner_lg.__main__ import _token
-    from agent_runner_lg.config import Access, load_profiles, load_runner
-    from agent_runner_lg.forge.reader import GitHubReader
-    from agent_runner_lg.rules.machine import compile_ignored
+    from reviewer.__main__ import _token
+    from reviewer.config import Access, load_profiles, load_runner
+    from reviewer.forge.reader import GitHubReader
+    from reviewer.rules.machine import compile_ignored
 
     load_runner(ICI / "runner.yaml")
     profils, _ = load_profiles(ICI / "profils")
@@ -78,7 +78,7 @@ async def lire_une_fois():
 
 def main() -> int:
     from agent_runner import machine as origine
-    from agent_runner_lg.rules import machine as portage
+    from reviewer.rules import machine as portage
 
     lots = asyncio.run(lire_une_fois())
     total = ecarts = 0

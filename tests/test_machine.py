@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from agent_runner_lg.rules.machine import (
+from reviewer.rules.machine import (
     Action,
     Check,
     PullSnapshot,

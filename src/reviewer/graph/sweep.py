@@ -35,12 +35,12 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from fnmatch import fnmatch
 
-from agent_runner_lg.config import Access, ProfileConfig
-from agent_runner_lg.output.events import Event, Journal
-from agent_runner_lg.rules.machine import (BRANCHES_PARTAGEES, Action, Decision,
+from reviewer.config import Access, ProfileConfig
+from reviewer.output.events import Event, Journal
+from reviewer.rules.machine import (BRANCHES_PARTAGEES, Action, Decision,
                                            PullSnapshot, State, compile_ignored,
                                            decide, normalise_login)
-from agent_runner_lg.store.leases import PullState, StateStore
+from reviewer.store.leases import PullState, StateStore
 
 __all__ = [
     "Outcome",
@@ -195,7 +195,7 @@ async def sweep_profile(
     broken: list[tuple[str, str]] = []
     skipped: list[tuple[str, str]] = []
 
-    from agent_runner_lg.forge.base import ForgeError  # noqa: PLC0415 — cycle
+    from reviewer.forge.base import ForgeError  # noqa: PLC0415 — cycle
 
     trust = frozenset(profile.reviewers.trust)
     ignores = compile_ignored(profile.ignored_checks)

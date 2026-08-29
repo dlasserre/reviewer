@@ -22,7 +22,7 @@ import sys
 
 import pytest
 
-from agent_runner_lg.agent.trust import ensure_trusted, project_key, untrusted
+from reviewer.agent.trust import ensure_trusted, project_key, untrusted
 
 
 def lire(dossier):

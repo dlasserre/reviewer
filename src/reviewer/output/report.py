@@ -22,8 +22,8 @@ testables sans lancer un agent ni toucher a GitHub.
 
 from __future__ import annotations
 
-from agent_runner_lg.rules.machine import PullSnapshot, Severity, Thread
-from agent_runner_lg.rules.verdict import Issue, ThreadVerdict, Verdict
+from reviewer.rules.machine import PullSnapshot, Severity, Thread
+from reviewer.rules.verdict import Issue, ThreadVerdict, Verdict
 
 __all__ = [
     "blocked_notice",

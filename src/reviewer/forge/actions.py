@@ -30,13 +30,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from agent_runner_lg.config import ProfileConfig
-from agent_runner_lg.forge.base import ForgeError
-from agent_runner_lg.output import report
-from agent_runner_lg.output.events import Event, Journal
-from agent_runner_lg.rules.machine import Decision, PullSnapshot, Thread
-from agent_runner_lg.rules.verdict import Verdict
-from agent_runner_lg.store.leases import PullState, StateStore
+from reviewer.config import ProfileConfig
+from reviewer.forge.base import ForgeError
+from reviewer.output import report
+from reviewer.output.events import Event, Journal
+from reviewer.rules.machine import Decision, PullSnapshot, Thread
+from reviewer.rules.verdict import Verdict
+from reviewer.store.leases import PullState, StateStore
 
 __all__ = [
     "assurer_issue",
@@ -305,7 +305,7 @@ async def prevenir_humain(
     question va dans les fils, la ou la remarque a ete ecrite. Sinon — une CI
     rouge n'appartient a aucun fil — elle va sur la PR.
     """
-    from agent_runner_lg.rules.machine import Action  # noqa: PLC0415 — cycle
+    from reviewer.rules.machine import Action  # noqa: PLC0415 — cycle
 
     if writer is None:
         return 0

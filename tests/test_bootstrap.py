@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_runner_lg.bootstrap import (deviner_checks, poser_secret,
+from reviewer.bootstrap import (deviner_checks, poser_secret,
                                        sauvegarder, _yaml_profil, _yaml_runner)
-from agent_runner_lg.config import ConfigError, SecretRef, load_profile, load_runner
+from reviewer.config import ConfigError, SecretRef, load_profile, load_runner
 
 
 # ── Ce que l'assistant ecrit doit se recharger ──────────────────────────────

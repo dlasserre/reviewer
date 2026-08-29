@@ -41,8 +41,8 @@ from typing import Any
 
 import httpx
 
-from agent_runner_lg.rules.machine import AGENT_MARK, ASK_MARK
-from agent_runner_lg.forge.base import ForgeError
+from reviewer.rules.machine import AGENT_MARK, ASK_MARK
+from reviewer.forge.base import ForgeError
 
 __all__ = ["GitHubWriter"]
 

@@ -19,9 +19,9 @@ import json
 import httpx
 import pytest
 
-from agent_runner_lg.forge.base import ForgeError
-from agent_runner_lg.forge.writer import GitHubWriter
-from agent_runner_lg.rules.machine import AGENT_MARK, ASK_MARK, Comment
+from reviewer.forge.base import ForgeError
+from reviewer.forge.writer import GitHubWriter
+from reviewer.rules.machine import AGENT_MARK, ASK_MARK, Comment
 
 
 def _writer(handler) -> GitHubWriter:

@@ -47,11 +47,11 @@ from functools import partial, wraps
 
 from langgraph.graph import END, START, StateGraph
 
-from agent_runner_lg.graph import nodes
-from agent_runner_lg.graph.deps import Deps
-from agent_runner_lg.graph.state import JobState, etat_initial
-from agent_runner_lg.output.events import Event
-from agent_runner_lg.rules.machine import Action
+from reviewer.graph import nodes
+from reviewer.graph.deps import Deps
+from reviewer.graph.state import JobState, etat_initial
+from reviewer.output.events import Event
+from reviewer.rules.machine import Action
 
 __all__ = ["construire", "lancer_job", "topologie"]
 
@@ -199,7 +199,7 @@ async def _dry_run(state: JobState, deps: Deps) -> dict:
     Le bail est rendu tout de suite. Aucun cycle consomme, personne prevenu :
     une passe de lecture ne doit rien laisser derriere elle.
     """
-    from agent_runner_lg.output.events import Event  # noqa: PLC0415
+    from reviewer.output.events import Event  # noqa: PLC0415
 
     nodes._rendre_le_bail(state, deps)
     deps.journal.emit(Event(

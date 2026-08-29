@@ -13,10 +13,10 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from agent_runner_lg.output.api import create_app
-from agent_runner_lg.config import load_profile, load_runner
-from agent_runner_lg.output.events import Event, Journal
-from agent_runner_lg.store.leases import PullState, StateStore
+from reviewer.output.api import create_app
+from reviewer.config import load_profile, load_runner
+from reviewer.output.events import Event, Journal
+from reviewer.store.leases import PullState, StateStore
 
 RUNNER = """
 worktrees_root: {tmp}/wt

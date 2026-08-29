@@ -16,9 +16,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from agent_runner_lg.agent.guard import Guard
-from agent_runner_lg.config import ProfileConfig, RunnerConfig
-from agent_runner_lg.repo.checks import outils_locaux
+from reviewer.agent.guard import Guard
+from reviewer.config import ProfileConfig, RunnerConfig
+from reviewer.repo.checks import outils_locaux
 
 __all__ = ["AgentOutcome", "agent_env", "run_agent"]
 

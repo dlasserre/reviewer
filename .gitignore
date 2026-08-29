@@ -10,7 +10,7 @@
 # `load_profiles` prend TOUS les YAML de ce dossier, donc un modele y devient un
 # second projet — avec des chemins qui n'existent pas, et deux demons sur les
 # memes depots. Ils sont produits par les memes fonctions que
-# `agent-runner-lg init`, donc ils ne peuvent pas deriver de ce qu'il ecrit.
+# `reviewer init`, donc ils ne peuvent pas deriver de ce qu'il ecrit.
 runner.yaml
 profils/*.yaml
 

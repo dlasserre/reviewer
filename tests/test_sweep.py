@@ -23,11 +23,11 @@ from datetime import timedelta
 
 import pytest
 
-from agent_runner_lg.config import load_profile
-from agent_runner_lg.output.events import Journal
-from agent_runner_lg.rules.machine import Action, Check, PullSnapshot, State, Thread
-from agent_runner_lg.graph.sweep import sweep_profile
-from agent_runner_lg.store.leases import PullState, StateStore
+from reviewer.config import load_profile
+from reviewer.output.events import Journal
+from reviewer.rules.machine import Action, Check, PullSnapshot, State, Thread
+from reviewer.graph.sweep import sweep_profile
+from reviewer.store.leases import PullState, StateStore
 
 CODEX = "chatgpt-codex-connector[bot]"
 P1 = "**![P1 Badge](https://img.shields.io/badge/P1-orange)**  Ne court-circuitez pas"

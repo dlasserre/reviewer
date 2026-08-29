@@ -17,9 +17,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from agent_runner_lg.forge.base import ForgeError
-from agent_runner_lg.forge.reader import GitHubReader, _checks, _erreurs, _threads
-from agent_runner_lg.rules.machine import State, decide, normalise_login
+from reviewer.forge.base import ForgeError
+from reviewer.forge.reader import GitHubReader, _checks, _erreurs, _threads
+from reviewer.rules.machine import State, decide, normalise_login
 
 FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "pr400.json").read_text(encoding="utf-8")
@@ -114,7 +114,7 @@ def test_le_travail_est_bien_vu_avec_une_allowlist_ecrite_en_rest():
     ouvert = json.loads(json.dumps(brut[:1]))
     ouvert[0]["isResolved"] = False
 
-    from agent_runner_lg.rules.machine import Check, PullSnapshot
+    from reviewer.rules.machine import Check, PullSnapshot
 
     snap = PullSnapshot(
         number=400, repo="frontend", head_sha="x",

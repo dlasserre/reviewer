@@ -33,11 +33,11 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from agent_runner_lg.config import Access, ProfileConfig, RunnerConfig
-from agent_runner_lg.output.console import PAGE
-from agent_runner_lg.output.events import Journal, relire
-from agent_runner_lg.rules.machine import Severity
-from agent_runner_lg.store.leases import StateStore
+from reviewer.config import Access, ProfileConfig, RunnerConfig
+from reviewer.output.console import PAGE
+from reviewer.output.events import Journal, relire
+from reviewer.rules.machine import Severity
+from reviewer.store.leases import StateStore
 
 __all__ = ["create_app"]
 
@@ -92,7 +92,7 @@ def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         derive du cablage a la premiere modification, et rien ne le signale —
         un dessin faux ne leve aucune erreur.
         """
-        from agent_runner_lg.graph.build import topologie  # noqa: PLC0415
+        from reviewer.graph.build import topologie  # noqa: PLC0415
 
         return topologie()
 

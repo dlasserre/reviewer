@@ -35,7 +35,7 @@ import shlex
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path, PurePath
-from agent_runner_lg.rules.machine import BRANCHES_PARTAGEES
+from reviewer.rules.machine import BRANCHES_PARTAGEES
 
 __all__ = ["Guard", "Verdict", "PROTECTED_GLOBS"]
 

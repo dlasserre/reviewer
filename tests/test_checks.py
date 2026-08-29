@@ -11,7 +11,7 @@ import sys
 
 import pytest
 
-from agent_runner_lg.repo.checks import (CheckOutcome, CheckReport, outils_locaux,
+from reviewer.repo.checks import (CheckOutcome, CheckReport, outils_locaux,
                                  run_checks)
 
 # Un interpreteur qu'on sait present, plutot qu'un `echo` dont le comportement

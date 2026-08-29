@@ -8,7 +8,7 @@
 # Le projet « exemple ». Copier ce fichier suffit a ajouter un projet :
 # le moteur n'est pas touche.
 #
-# Ecrit par `agent-runner-lg init`.
+# Ecrit par `reviewer init`.
 
 project: exemple
 workspace: /repos

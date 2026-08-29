@@ -1,8 +1,8 @@
-# MODELE. Copier en `runner.yaml` A LA RACINE, ou laisser `agent-runner-lg init` l'ecrire.
+# MODELE. Copier en `runner.yaml` A LA RACINE, ou laisser `reviewer init` l'ecrire.
 # `runner.yaml` n'est pas versionne : il decrit UNE installation.
 
 # La MACHINE, pas les projets. Un seul de ces fichiers, jamais copie.
-# Ecrit par `agent-runner-lg init`. Relisez-le : rien ici n'est irreversible,
+# Ecrit par `reviewer init`. Relisez-le : rien ici n'est irreversible,
 # mais tout y est lu au demarrage.
 
 # HORS d'un repertoire cache, et ce n'est pas une preference de rangement : un

@@ -24,8 +24,8 @@ from typing import Any
 
 import httpx
 
-from agent_runner_lg.rules.machine import Check, Comment, PullSnapshot, Thread, compile_ignored
-from agent_runner_lg.forge.base import ForgeError
+from reviewer.rules.machine import Check, Comment, PullSnapshot, Thread, compile_ignored
+from reviewer.forge.base import ForgeError
 
 __all__ = ["GitHubReader"]
 

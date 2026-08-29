@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from agent_runner_lg.rules.machine import PullSnapshot
+from reviewer.rules.machine import PullSnapshot
 
 __all__ = ["ForgeReader", "ForgeWriter", "ForgeError"]
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent_runner_lg.agent.guard import Guard
+from reviewer.agent.guard import Guard
 
 
 @pytest.fixture

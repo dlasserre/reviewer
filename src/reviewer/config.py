@@ -45,7 +45,7 @@ import yaml
 from pydantic import (BaseModel, ConfigDict, Field, ValidationError,
                       field_validator, model_validator)
 
-from agent_runner_lg.rules.machine import BRANCHES_PARTAGEES, Severity
+from reviewer.rules.machine import BRANCHES_PARTAGEES, Severity
 
 __all__ = [
     "Access",
@@ -241,7 +241,7 @@ class SecretRef(str):
         if not val:
             raise ConfigError(
                 f"aucun secret dans le trousseau pour « {self} ». "
-                f"Le poser : `agent-runner-lg init`, ou en Python "
+                f"Le poser : `reviewer init`, ou en Python "
                 f"`keyring.set_password({service!r}, {compte!r}, ...)`."
             )
         return val
@@ -850,7 +850,7 @@ class ProfileConfig(Strict):
         #
         # La variable ne vaut que pour `workspace`. Tout le reste du profil —
         # depots, verifications, relecteurs, perimetre — est identique partout.
-        if racine := os.environ.get("AGENT_RUNNER_WORKSPACE", "").strip():
+        if racine := os.environ.get("REVIEWER_WORKSPACE", "").strip():
             object.__setattr__(self, "workspace", Path(racine))
 
         # `{workspace}` est resolu APRES validation, pour que le fichier reste

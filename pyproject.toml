@@ -1,5 +1,5 @@
 [project]
-name = "agent-runner-langgraph"
+name = "reviewer"
 version = "0.1.0"
 description = "Le demon de revue, pilote par un graphe LangGraph. Le Claude Agent SDK reste l'outil qui ecrit le code."
 requires-python = ">=3.11"
@@ -24,7 +24,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 keyring = ["keyring>=25"]
 
 [project.scripts]
-agent-runner-lg = "agent_runner_lg.__main__:main"
+reviewer = "reviewer.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]

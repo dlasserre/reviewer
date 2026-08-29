@@ -25,12 +25,12 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from agent_runner_lg.agent.run import AgentOutcome
-from agent_runner_lg.repo.checks import CheckReport
-from agent_runner_lg.repo.git import Diff
-from agent_runner_lg.rules.machine import Decision, PullSnapshot, State
-from agent_runner_lg.rules.verdict import Verdict
-from agent_runner_lg.store.leases import Lease, PullState
+from reviewer.agent.run import AgentOutcome
+from reviewer.repo.checks import CheckReport
+from reviewer.repo.git import Diff
+from reviewer.rules.machine import Decision, PullSnapshot, State
+from reviewer.rules.verdict import Verdict
+from reviewer.store.leases import Lease, PullState
 
 __all__ = ["JobState", "etat_initial"]
 

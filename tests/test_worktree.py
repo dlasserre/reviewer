@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path as _Path
 
-from agent_runner_lg.repo.worktree import segments_caches
+from reviewer.repo.worktree import segments_caches
 
 
 # ── Un worktree ne se place pas sous un repertoire cache ────────────────────
@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_runner_lg.repo.worktree import Worktree, WorktreeError, WorktreeManager, _est_lien
+from reviewer.repo.worktree import Worktree, WorktreeError, WorktreeManager, _est_lien
 
 
 def git(cwd, *args):

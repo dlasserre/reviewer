@@ -12,7 +12,7 @@ notification.
 
 from __future__ import annotations
 
-from agent_runner_lg.rules.verdict import SCHEMA, Issue, parse
+from reviewer.rules.verdict import SCHEMA, Issue, parse
 
 FILS = ("PRRT_kwDO1", "PRRT_kwDO2")
 
@@ -151,7 +151,7 @@ def test_le_sujet_de_commit_est_CONVENTIONNEL():
     # `commit_all` refuse un sujet non conventionnel. Exiger la forme dans le
     # prompt marcherait « la plupart du temps », et la plupart du temps veut
     # dire un job perdu de temps en temps : on prefixe nous-memes.
-    from agent_runner_lg.repo.git import _SUJET_CONVENTIONNEL
+    from reviewer.repo.git import _SUJET_CONVENTIONNEL
 
     for resume in ("", "Corrige le mur", "a" * 300, "élision et accents"):
         sujet = parse(rendu(summary=resume), submitted=FILS).commit_subject("backend", 1)

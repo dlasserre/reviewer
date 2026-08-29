@@ -34,8 +34,8 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 
-from agent_runner_lg.repo.checks import CheckReport
-from agent_runner_lg.rules.machine import PullSnapshot, Severity, Thread, normalise_login
+from reviewer.repo.checks import CheckReport
+from reviewer.rules.machine import PullSnapshot, Severity, Thread, normalise_login
 
 __all__ = ["FixPrompt", "build_debt_proposal", "build_fix_prompt"]
 

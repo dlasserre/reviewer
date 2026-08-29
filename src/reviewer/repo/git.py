@@ -23,9 +23,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from agent_runner_lg.agent.guard import PROTECTED_GLOBS
+from reviewer.agent.guard import PROTECTED_GLOBS
 from fnmatch import fnmatch
-from agent_runner_lg.rules.machine import BRANCHES_PARTAGEES
+from reviewer.rules.machine import BRANCHES_PARTAGEES
 
 __all__ = ["GitError", "Diff", "commit_all", "current_branch", "diff_stat", "push"]
 

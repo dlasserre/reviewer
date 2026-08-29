@@ -1,8 +1,9 @@
 # Le demon de revue.
 #
 #   docker compose build               construire l'image
-#   docker compose run --rm init       l'assistant : questions, verifications
-#   docker compose run --rm outils     cloner un depot, installer ses dependances
+#   docker compose run --rm outils     cloner les depots, installer leurs deps
+#   docker compose run --rm init       l'assistant — APRES le clonage, sinon il
+#                                      ne peut pas deviner les verifications
 #   docker compose up -d               lancer le demon
 #   docker compose logs -f runner      le suivre
 #
@@ -22,7 +23,7 @@ x-construction: &construction
       #   UID=$(id -u) GID=$(id -g) docker compose build
       UID: "${UID:-1000}"
       GID: "${GID:-1000}"
-  image: agent-runner-lg
+  image: reviewer
 
 services:
   runner:
@@ -44,7 +45,7 @@ services:
       # copies locales. Ici elles sont sous /repos ; sur un poste elles sont
       # ailleurs. Cette variable evite de dupliquer le profil pour cette seule
       # ligne — un doublon derive, et celui qu'on oublie est celui qui tourne.
-      AGENT_RUNNER_WORKSPACE: /repos
+      REVIEWER_WORKSPACE: /repos
 
     volumes:
       # La configuration, en LECTURE SEULE. Le YAML est la frontiere de securite
@@ -103,7 +104,7 @@ services:
       PAT_READ: "${PAT_READ:?le jeton de lecture de la forge est requis}"
       PAT_WRITE: "${PAT_WRITE:-}"
       CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
-      AGENT_RUNNER_WORKSPACE: /repos
+      REVIEWER_WORKSPACE: /repos
     volumes:
       - ./:/config
       - repos:/repos

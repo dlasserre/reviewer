@@ -18,18 +18,18 @@ from pathlib import Path
 
 import pytest
 
-from agent_runner_lg.config import IssuesConfig, load_profile, load_runner
-from agent_runner_lg.output.events import Journal
-from agent_runner_lg.forge.base import ForgeError
-from agent_runner_lg.agent.run import AgentOutcome
-from agent_runner_lg.graph.build import construire, lancer_job
-from agent_runner_lg.graph.deps import Deps
-from agent_runner_lg.graph.sweep import Outcome
-from agent_runner_lg.output.events import new_job_id
-from agent_runner_lg.repo.worktree import WorktreeManager
-from agent_runner_lg.rules.machine import (Action, Decision, PullSnapshot, State,
+from reviewer.config import IssuesConfig, load_profile, load_runner
+from reviewer.output.events import Journal
+from reviewer.forge.base import ForgeError
+from reviewer.agent.run import AgentOutcome
+from reviewer.graph.build import construire, lancer_job
+from reviewer.graph.deps import Deps
+from reviewer.graph.sweep import Outcome
+from reviewer.output.events import new_job_id
+from reviewer.repo.worktree import WorktreeManager
+from reviewer.rules.machine import (Action, Decision, PullSnapshot, State,
                                            Thread, decide)
-from agent_runner_lg.store.leases import StateStore
+from reviewer.store.leases import StateStore
 
 PY = sys.executable
 
@@ -290,7 +290,7 @@ def test_l_agent_recoit_l_outillage_du_DEPOT(atelier, tmp_path):
     # Les verifications du runner preparaient deja leur PATH ; l'agent, non.
     # On ne peut pas lui demander de « lancer les tests du depot » sans lui
     # donner de quoi les lancer.
-    from agent_runner_lg.agent.run import agent_env
+    from reviewer.agent.run import agent_env
 
     _, runner, _, _, _, _ = atelier
     faux_venv = tmp_path / "wt" / ".venv" / "Scripts"
@@ -305,7 +305,7 @@ def test_l_agent_recoit_l_outillage_du_DEPOT(atelier, tmp_path):
 def test_le_PATH_est_reconstruit_ENTIER_pas_tronque(atelier, tmp_path):
     # Ce dictionnaire ECRASE les variables de meme nom cote SDK : un PATH qui
     # ne contiendrait que le venv effacerait tout le reste de l'outillage.
-    from agent_runner_lg.agent.run import agent_env
+    from reviewer.agent.run import agent_env
 
     _, runner, _, _, _, _ = atelier
     (tmp_path / "wt" / ".venv" / "bin").mkdir(parents=True)
@@ -318,7 +318,7 @@ def test_le_PATH_est_reconstruit_ENTIER_pas_tronque(atelier, tmp_path):
 def test_sans_venv_le_PATH_n_est_PAS_touche(atelier, tmp_path):
     # Un depot sans venv (JavaScript, Go…) ne doit pas voir son PATH reecrit
     # pour rien : le reecrire a l'identique est une occasion de se tromper.
-    from agent_runner_lg.agent.run import agent_env
+    from reviewer.agent.run import agent_env
 
     _, runner, _, _, _, _ = atelier
     (tmp_path / "vide").mkdir()
@@ -329,7 +329,7 @@ def test_la_cle_d_API_reste_effacee_dans_l_environnement_de_l_agent(atelier, tmp
     # `ANTHROPIC_API_KEY` prime sur `CLAUDE_CODE_OAUTH_TOKEN` : la laisser
     # basculerait la facturation de l'abonnement vers l'API, en silence. Ce
     # test garde la porte fermee pendant qu'on touche a cette fonction.
-    from agent_runner_lg.agent.run import agent_env
+    from reviewer.agent.run import agent_env
 
     _, runner, _, _, _, _ = atelier
     (tmp_path / "wt" / ".venv" / "Scripts").mkdir(parents=True)

@@ -1,4 +1,4 @@
-"""L'assistant d'installation : `agent-runner-lg init`.
+"""L'assistant d'installation : `reviewer init`.
 
 Il pose les questions, verifie ce qu'on lui repond, et ECRIT les deux fichiers de
 configuration. Rien d'autre — il ne lance aucun agent et ne touche a aucun depot.
@@ -48,7 +48,7 @@ import httpx
 
 __all__ = ["assistant"]
 
-SERVICE = "agent-runner-lg"
+SERVICE = "reviewer"
 API = "https://api.github.com"
 
 
@@ -56,12 +56,12 @@ def en_conteneur() -> bool:
     """Tourne-t-on dans un conteneur ?
 
     Deux indices, et le second suffit a lui seul : `/.dockerenv` est pose par
-    Docker, et `AGENT_RUNNER_WORKSPACE` par notre propre compose. On ne cherche
+    Docker, et `REVIEWER_WORKSPACE` par notre propre compose. On ne cherche
     pas a etre exhaustif — se tromper ne coute qu'un defaut propose, que
     l'utilisateur voit et peut changer.
     """
     return Path("/.dockerenv").exists() or bool(
-        os.environ.get("AGENT_RUNNER_WORKSPACE", "").strip())
+        os.environ.get("REVIEWER_WORKSPACE", "").strip())
 
 
 # ── Poser une question ──────────────────────────────────────────────────────
@@ -274,7 +274,7 @@ def _yaml_runner(*, racine: Path, port: int, oauth: str, arme: bool,
               "s'ouvre a tout le reseau.\n  reseau_confine: true"
               if conteneur else "bind: 127.0.0.1")
     return f"""# La MACHINE, pas les projets. Un seul de ces fichiers, jamais copie.
-# Ecrit par `agent-runner-lg init`. Relisez-le : rien ici n'est irreversible,
+# Ecrit par `reviewer init`. Relisez-le : rien ici n'est irreversible,
 # mais tout y est lu au demarrage.
 
 # HORS d'un repertoire cache, et ce n'est pas une preference de rangement : un
@@ -332,7 +332,7 @@ def _yaml_profil(*, projet: str, org: str, workspace: Path, lecture: str,
         f"# Le projet « {projet} ». Copier ce fichier suffit a ajouter un projet :",
         "# le moteur n'est pas touche.",
         "#",
-        "# Ecrit par `agent-runner-lg init`.",
+        "# Ecrit par `reviewer init`.",
         "",
         f"project: {projet}",
         f"workspace: {workspace.as_posix()}",
@@ -426,7 +426,7 @@ def assistant(chemin_runner: Path) -> int:
         return 2
 
     print()
-    print("  Assistant d'installation d'agent-runner-lg.")
+    print("  Assistant d'installation d'reviewer.")
     print("  Rien n'est ecrit avant la derniere question, et un fichier existant")
     print("  est toujours sauvegarde avant d'etre remplace.")
 
@@ -533,7 +533,13 @@ def assistant(chemin_runner: Path) -> int:
         _titre(f"Depot « {nom} »")
         chemin = Path(demander("Copie locale", str(workspace / nom))).expanduser()
         if not chemin.is_dir():
-            print("     !! introuvable : aucun worktree ne pourra en etre derive.")
+            # Le DIRE en entier : sans la copie, aucun worktree ne se derive ET
+            # les verifications ne se devinent pas — c'est de la que vient une
+            # saisie manuelle qui n'avait pas lieu d'etre.
+            print("     !! introuvable. Deux consequences : aucun worktree ne")
+            print("        pourra en etre derive, et les verifications ne")
+            print("        peuvent pas etre devinees — il faudra les saisir.")
+            print("        Cloner le depot d'abord evite les deux.")
         print("  write   : l'agent y corrige et y pousse")
         print("  context : l'agent le LIT — code, conventions — sans pouvoir l'ecrire")
         acces = "write" if demander_oui("Modifiable par l'agent ?") else "context"
@@ -624,7 +630,7 @@ def assistant(chemin_runner: Path) -> int:
             print(f"    {var:<28} {role}")
     print()
     print("  Ensuite :")
-    print("    agent-runner-lg -c runner.yaml check     valide et dit ce qui manque")
-    print("    agent-runner-lg -c runner.yaml status    ce que le demon ferait")
-    print("    agent-runner-lg -c runner.yaml serve     le demon + la console")
+    print("    reviewer -c runner.yaml check     valide et dit ce qui manque")
+    print("    reviewer -c runner.yaml status    ce que le demon ferait")
+    print("    reviewer -c runner.yaml serve     le demon + la console")
     return 0

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from agent_runner_lg.store.leases import PullState, StateStore, pid_alive
+from reviewer.store.leases import PullState, StateStore, pid_alive
 
 T0 = datetime(2026, 8, 25, 10, 0, tzinfo=timezone.utc)
 

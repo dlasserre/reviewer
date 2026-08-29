@@ -36,7 +36,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from agent_runner_lg.rules.machine import BRANCHES_PARTAGEES
+from reviewer.rules.machine import BRANCHES_PARTAGEES
 
 __all__ = ["Worktree", "WorktreeError", "WorktreeManager", "segments_caches"]
 

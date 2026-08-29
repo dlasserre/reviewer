@@ -24,12 +24,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_runner_lg.graph.sweep import ordonnancer
-from agent_runner_lg.rules.machine import Action, Decision, PullSnapshot, State
-from agent_runner_lg.graph.sweep import Outcome
+from reviewer.graph.sweep import ordonnancer
+from reviewer.rules.machine import Action, Decision, PullSnapshot, State
+from reviewer.graph.sweep import Outcome
 
-from agent_runner_lg.__main__ import _diagnostic, main
-from agent_runner_lg.config import load_profile, load_runner
+from reviewer.__main__ import _diagnostic, main
+from reviewer.config import load_profile, load_runner
 
 RACINE = Path(__file__).resolve().parent.parent
 
@@ -144,7 +144,7 @@ def test_le_moteur_par_defaut_est_DIT_meme_quand_il_est_implicite(config):
     # rien ne l'annonce : il a fallu relire un transcrit de session pour le
     # savoir. Un reglage qui gouverne le cout et la qualite se lit dans la
     # sortie, y compris quand personne ne l'a choisi.
-    from agent_runner_lg.__main__ import _dire_le_moteur
+    from reviewer.__main__ import _dire_le_moteur
 
     profil = load_profile(config / "profils" / "p.yaml")
     ligne = _dire_le_moteur(profil)
@@ -154,7 +154,7 @@ def test_le_moteur_par_defaut_est_DIT_meme_quand_il_est_implicite(config):
 
 
 def test_la_surcharge_de_ligne_de_commande_gagne_sur_le_profil(config):
-    from agent_runner_lg.__main__ import _surcharger
+    from reviewer.__main__ import _surcharger
 
     profils = {"essai": load_profile(config / "profils" / "p.yaml")}
     sortie = _surcharger(profils, model="claude-opus-5", effort="high")
@@ -169,15 +169,15 @@ def test_la_surcharge_de_ligne_de_commande_gagne_sur_le_profil(config):
 
 def test_sans_surcharge_les_profils_sont_rendus_TELS_QUELS(config):
     # Reconstruire pour rien, c'est une occasion de perdre quelque chose.
-    from agent_runner_lg.__main__ import _surcharger
+    from reviewer.__main__ import _surcharger
 
     profils = {"essai": load_profile(config / "profils" / "p.yaml")}
     assert _surcharger(profils, model=None, effort=None) is profils
 
 
 def test_un_effort_INCONNU_est_refuse_avec_les_valeurs_acceptees(config):
-    from agent_runner_lg.__main__ import _surcharger
-    from agent_runner_lg.config import ConfigError
+    from reviewer.__main__ import _surcharger
+    from reviewer.config import ConfigError
 
     profils = {"essai": load_profile(config / "profils" / "p.yaml")}
     with pytest.raises(ConfigError, match="low, medium, high, xhigh, max"):
@@ -187,7 +187,7 @@ def test_un_effort_INCONNU_est_refuse_avec_les_valeurs_acceptees(config):
 def test_un_modele_VIDE_n_est_pas_un_choix(tmp_path):
     # La chaine vide passerait pour une decision alors qu'elle retombe sur le
     # defaut du CLI sans le dire.
-    from agent_runner_lg.config import ConfigError, load_profile as charger
+    from reviewer.config import ConfigError, load_profile as charger
 
     chemin = tmp_path / "p.yaml"
     chemin.write_text(textwrap.dedent("""
@@ -202,7 +202,7 @@ def test_un_modele_VIDE_n_est_pas_un_choix(tmp_path):
 
 
 def test_le_moteur_choisi_apparait_dans_la_ligne_de_bilan(config):
-    from agent_runner_lg.__main__ import _dire_le_moteur, _surcharger
+    from reviewer.__main__ import _dire_le_moteur, _surcharger
 
     profils = _surcharger({"essai": load_profile(config / "profils" / "p.yaml")},
                           model="claude-opus-5", effort="max")
@@ -223,7 +223,7 @@ def test_une_branche_nommee_d_apres_une_issue_QUI_N_EXISTERA_PAS_est_refusee(tmp
     # La contradiction se paierait tard, sinon : le nom de branche ne se calcule
     # qu'au moment de monter le worktree, donc en plein job, apres avoir pris un
     # bail et consomme un cycle.
-    from agent_runner_lg.config import ConfigError, load_profile
+    from reviewer.config import ConfigError, load_profile
 
     chemin = _profil(tmp_path, """
         project: essai
@@ -241,7 +241,7 @@ def test_une_branche_nommee_d_apres_une_issue_QUI_N_EXISTERA_PAS_est_refusee(tmp
 def test_une_priorite_URGENT_automatique_est_refusee(tmp_path):
     # Cette valeur ouvre la voie hotfix. Une voie d'urgence qu'un automate peut
     # declarer n'est plus une voie d'urgence.
-    from agent_runner_lg.config import ConfigError, load_profile
+    from reviewer.config import ConfigError, load_profile
 
     chemin = _profil(tmp_path, """
         project: essai
@@ -260,7 +260,7 @@ def test_une_priorite_URGENT_automatique_est_refusee(tmp_path):
 def test_une_branche_derivee_sans_aucun_numero_est_refusee(tmp_path):
     # Deux PR de release produiraient la meme branche, et git refuse deux
     # worktrees sur une meme reference.
-    from agent_runner_lg.config import ConfigError, load_profile
+    from reviewer.config import ConfigError, load_profile
 
     chemin = _profil(tmp_path, """
         project: essai
@@ -383,7 +383,7 @@ def _runner_avec(tmp_path, *, reconcile_every: str):
 
 
 async def test_la_boucle_appelle_le_travail_a_chaque_tour(monkeypatch, tmp_path):
-    import agent_runner_lg.__main__ as m
+    import reviewer.__main__ as m
 
     passages = []
 
@@ -402,7 +402,7 @@ async def test_la_boucle_appelle_le_travail_a_chaque_tour(monkeypatch, tmp_path)
 async def test_le_premier_passage_est_IMMEDIAT(monkeypatch, tmp_path):
     # Attendre l'intervalle avant le premier tour ferait croire, au lancement,
     # que le demon ne voit rien — precisement le symptome qu'on corrige.
-    import agent_runner_lg.__main__ as m
+    import reviewer.__main__ as m
 
     vu = []
 
@@ -421,7 +421,7 @@ async def test_une_erreur_n_arrete_PAS_la_boucle(monkeypatch, tmp_path, capsys):
     # Jeton expire, GitHub indisponible, coupure reseau : le passage suivant
     # reessaie. Un demon qui meurt sur la premiere erreur transitoire est pire
     # qu'absent — on le croit vivant.
-    import agent_runner_lg.__main__ as m
+    import reviewer.__main__ as m
 
     tours = []
 

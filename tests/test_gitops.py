@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_runner_lg.repo.git import Diff, GitError, commit_all, current_branch, diff_stat, push
+from reviewer.repo.git import Diff, GitError, commit_all, current_branch, diff_stat, push
 
 
 def git(cwd, *args):
