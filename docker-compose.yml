@@ -1,0 +1,70 @@
+# Le demon de revue.
+#
+#   docker compose run --rm outils     installer les dependances d'un depot
+#   docker compose up -d               lancer le demon
+#   docker compose logs -f runner      le suivre
+#
+# Les secrets viennent d'un fichier `.env` A COTE de ce fichier, jamais de ce
+# fichier lui-meme : `docker-compose.yml` se versionne, `.env` non.
+
+services:
+  runner:
+    build:
+      context: .
+      args:
+        # Sous Linux, faire correspondre l'UID a celui de l'hote : l'agent ecrit
+        # dans des worktrees derives de depots montes, et un fichier cree par un
+        # autre UID devient impossible a modifier depuis l'hote.
+        #   UID=$(id -u) GID=$(id -g) docker compose build
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
+    image: agent-runner-lg
+    restart: unless-stopped
+
+    environment:
+      # Il n'y a PAS de trousseau dans un conteneur : les references de
+      # configuration doivent etre de la forme `env:NOM`. Ces trois variables
+      # viennent du `.env`, et n'apparaissent jamais dans une image.
+      PAT_READ: "${PAT_READ:?le jeton de lecture de la forge est requis}"
+      PAT_WRITE: "${PAT_WRITE:-}"
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:?le jeton du SDK est requis}"
+      # Le SDK place ANTHROPIC_API_KEY AVANT le jeton OAuth : une variable qui
+      # traine ferait basculer la facturation vers l'API payante, en silence. Le
+      # demon l'efface deja pour l'agent ; on ne la laisse pas entrer.
+      ANTHROPIC_API_KEY: ""
+
+    volumes:
+      # La configuration, en LECTURE SEULE. Le YAML est la frontiere de securite
+      # du demon : il dit quels depots sont modifiables et si les ecritures sont
+      # armees. Un conteneur qui pourrait le reecrire n'aurait plus de frontiere.
+      - ./runner.yaml:/config/runner.yaml:ro
+      - ./profils:/config/profils:ro
+
+      # Vos depots. Les chemins DANS le profil doivent etre ceux du conteneur
+      # (/repos/<nom>), pas ceux de l'hote.
+      - ${REPOS:-./repos}:/repos
+
+      # L'etat : baux, journaux, points de reprise, worktrees, configuration
+      # Claude. Un volume nomme, donc il survit a une reconstruction d'image.
+      - var:/var/agent-runner
+
+    ports:
+      # 127.0.0.1 cote HOTE, et c'est ce qui rend l'ecoute sur 0.0.0.0 acceptable
+      # dans le conteneur : la surface exposee est exactement celle d'une ecoute
+      # locale sur la machine. Retirer ce prefixe ouvrirait la console — et
+      # l'etat des jobs — a tout le reseau.
+      - "127.0.0.1:8788:8788"
+
+  # Un shell dans la MEME image et sur les MEMES volumes, pour installer les
+  # dependances des depots une fois pour toutes. Ne demarre jamais tout seul.
+  outils:
+    image: agent-runner-lg
+    profiles: ["outils"]
+    entrypoint: ["/bin/bash"]
+    volumes:
+      - ${REPOS:-./repos}:/repos
+      - var:/var/agent-runner
+    working_dir: /repos
+
+volumes:
+  var:

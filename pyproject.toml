@@ -1,0 +1,46 @@
+[project]
+name = "agent-runner-langgraph"
+version = "0.1.0"
+description = "Le demon de revue, pilote par un graphe LangGraph. Le Claude Agent SDK reste l'outil qui ecrit le code."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2",
+    "pyyaml>=6",
+    "httpx>=0.27",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "claude-agent-sdk>=0.2",
+    # L'orchestration. `langgraph-checkpoint-sqlite` est SEPARE du paquet
+    # principal : sans lui, le graphe tourne mais ne se reprend pas apres un
+    # arret — et cette reprise est une des trois raisons du portage.
+    "langgraph>=0.2",
+    "langgraph-checkpoint-sqlite>=2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+# Le trousseau du systeme. OPTIONNEL, et c'est voulu : en conteneur il n'y a
+# aucune dorsale, et les secrets y arrivent par variables d'environnement.
+keyring = ["keyring>=25"]
+
+[project.scripts]
+agent-runner-lg = "agent_runner_lg.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

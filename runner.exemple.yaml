@@ -1,0 +1,51 @@
+# MODELE. Copier en `runner.yaml`, ou laisser `agent-runner-lg init` l'ecrire.
+# `runner.yaml` n'est pas versionne : il decrit UNE installation.
+
+# La MACHINE, pas les projets. Un seul de ces fichiers, jamais copie.
+# Ecrit par `agent-runner-lg init`. Relisez-le : rien ici n'est irreversible,
+# mais tout y est lu au demarrage.
+
+# HORS d'un repertoire cache, et ce n'est pas une preference de rangement : un
+# worktree monte sous un dossier commencant par un point casse la decouverte de
+# tests de tout outil qui construit un glob depuis sa racine. Mesure : jest
+# rendait « No tests found » pendant que les memes tests passaient dans le depot
+# principal.
+worktrees_root: /var/agent-runner/worktrees
+state_db:       /var/agent-runner/state.db
+logs_dir:       /var/agent-runner/logs
+profiles_dir:   ./profils
+
+# L'API locale sert la console. Elle n'ecoute QUE sur la boucle locale, et la
+# validation refuse 0.0.0.0 : le demon n'expose aucun port entrant.
+api:
+  bind: 127.0.0.1
+  port: 8788
+
+wake:
+  poll_wait: 50s
+  reconcile_every: 5m
+
+claude:
+  # Repertoire de configuration DEDIE : isole le demon de la configuration
+  # personnelle et de la memoire automatique, qui polluerait le contexte d'un
+  # projet avec celui d'un autre.
+  config_dir: /var/agent-runner/.claude
+  oauth_token: env:CLAUDE_CODE_OAUTH_TOKEN
+  disable_auto_memory: true
+
+  # ANTHROPIC_API_KEY passe AVANT le jeton OAuth dans l'ordre de precedence : une
+  # variable qui traine bascule la facturation de l'abonnement vers l'API, sans
+  # rien afficher. On l'efface ; on ne parie pas sur son absence.
+  scrub_env:
+    - ANTHROPIC_API_KEY
+    - ANTHROPIC_AUTH_TOKEN
+
+# DEUX CRANS, PAS UN.
+#   false -> le demon lit, decide, construit le prompt, et s'arrete la.
+#   true  -> l'agent tourne : worktree, correctif, verifications, commit. Le
+#            PUSH depend d'un second interrupteur, `token_write` dans le profil.
+writes_enabled: false
+
+# Jobs menes de front. Jamais deux sur un MEME depot — ils partagent son `.git`.
+# Le parallelisme utile est ENTRE depots.
+max_parallel: 3

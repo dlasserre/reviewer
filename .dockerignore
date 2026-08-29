@@ -1,0 +1,31 @@
+# Ce qui ne doit PAS entrer dans l'image.
+#
+# Les deux premieres lignes comptent plus que les autres : un `.venv` ou un
+# `node_modules` construit sur l'hote ne fonctionne pas dans le conteneur —
+# binaires natifs, shims `.cmd`, `Scripts/` au lieu de `bin/` — et le copier
+# donnerait une image lourde qui echoue de facon incomprehensible.
+.venv/
+node_modules/
+
+# L'etat du demon : baux, journaux, worktrees. Il vit dans un volume, pas dans
+# une image. L'embarquer ferait demarrer chaque conteneur sur l'historique de la
+# machine ou l'image a ete construite.
+var/
+worktrees/
+*.db
+*.jsonl
+
+# Les secrets, meme par accident.
+.env
+.env.*
+*.bak
+*.*.bak
+
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+scripts/

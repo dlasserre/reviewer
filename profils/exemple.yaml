@@ -1,0 +1,50 @@
+# MODELE de profil. Un fichier par projet ; copier suffit a en ajouter un,
+# le moteur n'est pas touche. Les profils reels ne sont pas versionnes.
+
+# Le projet « exemple ». Copier ce fichier suffit a ajouter un projet :
+# le moteur n'est pas touche.
+#
+# Ecrit par `agent-runner-lg init`.
+
+project: exemple
+workspace: /repos
+
+forge:
+  org: mon-org
+  token_read: env:PAT_READ
+  token_write: env:PAT_WRITE     # depots `access: write` uniquement
+
+# Le nombre de fois qu'une meme PR peut repasser par l'agent. Au-dela,
+# la boucle ne converge pas : on appelle un humain.
+max_review_cycles: 3
+
+reviewers:
+  # QUI a le droit de faire travailler l'agent. Cette liste vient du
+  # profil, JAMAIS de la charge utile : c'est elle qui empeche un
+  # commentaire quelconque de declencher un cycle paye.
+  trust:
+    - chatgpt-codex-connector
+    - github-copilot
+
+human:
+  notify: "@moi"
+
+repos:
+  backend:
+    access: write
+    path: /repos/backend
+    checks:
+      - "ruff check ."
+      - "python -m pytest -q"
+
+  frontend:
+    access: write
+    path: /repos/frontend
+    checks:
+      - "npm run typecheck"
+      - "npm run lint"
+      - "npm run test:ci"
+
+  docs:
+    access: context
+    path: /repos/docs
