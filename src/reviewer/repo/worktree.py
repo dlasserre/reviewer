@@ -269,12 +269,35 @@ class WorktreeManager:
         cible.parent.mkdir(parents=True, exist_ok=True)
         _git(depot, "fetch", "origin", "--quiet")
 
-        # La branche existe-t-elle deja (cycle de correction) ou faut-il la
-        # creer (premier passage) ?
-        existe = _git(depot, "rev-parse", "--verify", "--quiet",
-                      f"refs/heads/{branch}", check=False).returncode == 0
-        if existe:
+        # TROIS cas, et en confondre deux fait travailler sur le mauvais arbre.
+        #
+        #   locale   — cycle de correction : la branche est deja ici, avec le
+        #              travail du passage precedent. On la reprend telle quelle.
+        #   distante — tete d'une PR ouverte depuis une AUTRE machine : elle
+        #              n'existe que sur origin. C'est le cas ORDINAIRE.
+        #   nulle    — derivee a faire naitre (PR de release) : elle n'existe
+        #              nulle part, et seulement la le socle a un sens.
+        #
+        # Ne tester que `refs/heads/` faisait tomber le cas distant dans le
+        # troisieme : la branche etait RECREEE depuis le socle. Le worktree
+        # portait alors le nom de la PR et le code de la branche d'integration,
+        # l'agent relisait des fils de revue contre un arbre sans rapport, et
+        # l'echec n'arrivait qu'au push, en non-fast-forward, loin de la cause.
+        #
+        # Mesure du 30/08/2026 sur `frontend#406` (hotfix vers `main`) : dans le
+        # conteneur, `origin/dev` n'existait pas et git a refuse tout net. La ou
+        # il existe, la commande REUSSIT — c'est la forme muette du meme defaut.
+        # Aucun test ne l'attrapait : ils creent tous la branche en local avant
+        # d'appeler `create`, donc tous prenaient le premier chemin.
+        def _connue(ref: str) -> bool:
+            return _git(depot, "rev-parse", "--verify", "--quiet", ref,
+                        check=False).returncode == 0
+
+        if _connue(f"refs/heads/{branch}"):
             _git(depot, "worktree", "add", str(cible), branch)
+        elif _connue(f"refs/remotes/origin/{branch}"):
+            _git(depot, "worktree", "add", "-b", branch, str(cible),
+                 f"origin/{branch}")
         else:
             _git(depot, "worktree", "add", "-b", branch, str(cible), f"origin/{base}")
 

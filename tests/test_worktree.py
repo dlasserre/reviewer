@@ -302,3 +302,44 @@ def test_un_env_ABSENT_du_depot_ne_fait_rien_echouer(depot, tmp_path):
                   branch="fix/44-truc", base="dev")
     assert wt.prepared
     assert ".env" not in wt.linked
+
+
+# ── La tete d'une PR vient d'origin, pas du socle ────────────────────────
+
+
+def test_une_branche_qui_n_existe_que_sur_origin_est_RECUPEREE(mgr, depot):
+    """Le cas ORDINAIRE : la PR a ete ouverte depuis une AUTRE machine.
+
+    Tous les autres tests de ce fichier creent la branche en local avant
+    d'appeler `create` — c'est exactement pour ca que le defaut a pu vivre :
+    ils prenaient tous le chemin « branche deja la ». Ici elle n'existe que sur
+    origin, comme n'importe quelle PR que le demon decouvre.
+    """
+    git(depot, "checkout", "-q", "-b", "hotfix/405-venue-d-ailleurs")
+    (depot / "app" / "correctif.py").write_text("cle = 1\n", encoding="utf-8")
+    git(depot, "add", "-A")
+    git(depot, "commit", "-m", "le correctif porte par la PR")
+    git(depot, "push", "-q", "-u", "origin", "hotfix/405-venue-d-ailleurs")
+    git(depot, "checkout", "-q", "dev")
+    git(depot, "branch", "-D", "hotfix/405-venue-d-ailleurs")
+
+    wt = mgr.create(depot=depot, repo="frontend", pr=406,
+                    branch="hotfix/405-venue-d-ailleurs", base="dev")
+
+    assert git(wt.path, "branch", "--show-current").strip() == "hotfix/405-venue-d-ailleurs"
+    # LE point du test, et la raison d'etre du fichier temoin : la version
+    # fautive creait bien une branche du bon NOM — assise sur le socle. Sans
+    # verifier le CONTENU, elle serait passee au vert en relisant `dev`.
+    assert (wt.path / "app" / "correctif.py").exists(), (
+        "le worktree porte le nom de la PR mais le code du socle"
+    )
+
+
+def test_une_branche_INCONNUE_part_toujours_du_socle(mgr, depot):
+    # Le cas derive (PR de release) ne bouge pas : la branche n'existe ni ici
+    # ni sur origin, et c'est la SEULE situation ou le socle a un sens.
+    wt = mgr.create(depot=depot, repo="backend", pr=727,
+                    branch="fix/pr727-revue", base="dev")
+    assert git(wt.path, "branch", "--show-current").strip() == "fix/pr727-revue"
+    assert (git(wt.path, "rev-parse", "HEAD").strip()
+            == git(depot, "rev-parse", "origin/dev").strip())

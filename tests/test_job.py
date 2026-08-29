@@ -15,6 +15,7 @@ import sys
 import textwrap
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,6 +25,7 @@ from reviewer.forge.base import ForgeError
 from reviewer.agent.run import AgentOutcome
 from reviewer.graph.build import construire, lancer_job
 from reviewer.graph.deps import Deps
+from reviewer.graph.nodes import _derivation
 from reviewer.graph.sweep import Outcome
 from reviewer.output.events import new_job_id
 from reviewer.repo.worktree import WorktreeManager
@@ -1131,3 +1133,40 @@ async def test_un_echec_ne_REPETE_pas_ses_reponses_a_chaque_cycle(atelier):
     await jr.run(travail(_deux_fils()), repo_path=depot, write_token="jeton")
 
     assert len(w.reponses) == premier, "meme commit, meme echec : on ne repete pas"
+
+
+# ── Le socle : celui de la PR, pas celui du profil ──────────────────────
+
+
+def _deps_de(profil):
+    """`_derivation` ne lit que le profil : lui donner le reste serait du decor."""
+    return SimpleNamespace(profile=profil)
+
+
+def test_le_socle_d_une_PR_ordinaire_est_SA_base(atelier):
+    # `frontend#406`, le 30/08/2026 : un hotfix vise `main`. Rendre la branche
+    # d'integration du profil faisait chercher le socle sur `origin/dev` —
+    # inexistant dans le clone du conteneur, et trompeur la ou il existe.
+    profil = atelier[2]
+    snap = PullSnapshot(number=406, repo="frontend", head_sha="abc",
+                        head_ref="hotfix/405-carto", base_ref="main")
+    assert _derivation(snap, _deps_de(profil)) == (False, "main")
+
+
+def test_le_socle_retombe_sur_le_profil_quand_la_forge_se_tait(atelier):
+    # Une base vide vaudrait `origin/` — un refname invalide. Le socle habituel
+    # est un moins mauvais defaut que l'echec.
+    profil = atelier[2]
+    snap = PullSnapshot(number=714, repo="backend", head_sha="abc",
+                        head_ref="fix/714-truc", base_ref="")
+    assert _derivation(snap, _deps_de(profil)) == (
+        False, profil.forge.integration_branch)
+
+
+def test_une_tete_PARTAGEE_derive_encore_vers_elle_meme(atelier):
+    # Le cas release ne change pas : on derive, et le socle est la tete
+    # partagee elle-meme — pas la base de la PR de release, qui est `main`.
+    profil = atelier[2]
+    snap = PullSnapshot(number=727, repo="backend", head_sha="abc",
+                        head_ref="dev", base_ref="main")
+    assert _derivation(snap, _deps_de(profil)) == (True, "dev")

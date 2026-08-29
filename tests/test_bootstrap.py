@@ -12,6 +12,7 @@ detection des verifications.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -21,6 +22,7 @@ import pytest
 from reviewer.bootstrap import (deviner_checks, poser_secret,
                                        sauvegarder, _yaml_profil, _yaml_runner)
 from reviewer.config import ConfigError, SecretRef, load_profile, load_runner
+from reviewer.output.setup import commande_de_clonage
 
 
 # ── Ce que l'assistant ecrit doit se recharger ──────────────────────────────
@@ -196,3 +198,56 @@ def test_un_pyproject_illisible_ne_fait_pas_tomber_l_assistant(tmp_path):
 
 def test_un_depot_sans_rien_de_reconnaissable_ne_propose_rien(tmp_path):
     assert deviner_checks(tmp_path) == []
+
+
+# ── Le clone d'installation ────────────────────────────────────────
+
+
+def _git(cwd, *args):
+    r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True,
+                       text=True, encoding="utf-8", errors="replace", timeout=120)
+    assert r.returncode == 0, f"git {' '.join(args)} :\n{r.stderr}"
+    return r.stdout
+
+
+def test_le_clone_d_installation_ramene_les_branches_AUTRES_que_la_defaut(tmp_path):
+    """`--depth` implique `--single-branch` — mesure, pas lecture de doc.
+
+    Un clone mono-branche n'ecrit qu'UN refspec
+    (`+refs/heads/<defaut>:refs/remotes/origin/<defaut>`), et plus aucun
+    `git fetch origin` ne ramenera jamais autre chose. Le demon ne peut alors
+    monter la tete d'AUCUNE PR : `fatal: invalid reference: origin/dev` sur
+    `frontend#406`, le 30/08/2026, dans le conteneur.
+
+    On clone VRAIMENT un depot a deux branches. Verifier la presence du drapeau
+    dans la liste d'arguments ne dirait rien de ce que git en fait — et c'est
+    le comportement de git qui etait en cause, pas l'intention du code.
+    """
+    origin = tmp_path / "origin.git"
+    origin.mkdir()
+    _git(origin, "init", "--bare", "--initial-branch=main", ".")
+
+    source = tmp_path / "source"
+    source.mkdir()
+    _git(source, "init", "--initial-branch=main", ".")
+    _git(source, "config", "user.email", "test@exemple.test")
+    _git(source, "config", "user.name", "Test")
+    (source / "a.txt").write_text("un\n", encoding="utf-8")
+    _git(source, "add", "-A")
+    _git(source, "commit", "-m", "initial")
+    _git(source, "remote", "add", "origin", str(origin))
+    _git(source, "push", "-q", "-u", "origin", "main")
+    _git(source, "checkout", "-q", "-b", "dev")
+    _git(source, "push", "-q", "-u", "origin", "dev")
+
+    cible = tmp_path / "clone"
+    r = subprocess.run(commande_de_clonage(str(origin), cible),
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=120)
+    assert r.returncode == 0, r.stderr
+
+    distantes = _git(cible, "branch", "-r")
+    assert "origin/main" in distantes
+    assert "origin/dev" in distantes, (
+        "clone mono-branche : le demon ne verra jamais la tete d'une PR"
+    )

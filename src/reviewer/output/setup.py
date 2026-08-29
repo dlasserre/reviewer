@@ -120,6 +120,28 @@ class Installation(BaseModel):
 
 # ── L'application ───────────────────────────────────────────────────────────
 
+def commande_de_clonage(url: str, cible: Path) -> list[str]:
+    """Le clone d'installation — et pourquoi il n'est PAS mono-branche.
+
+    `--depth` implique `--single-branch`. Le clone n'ecrit alors qu'un seul
+    refspec (`+refs/heads/<defaut>:refs/remotes/origin/<defaut>`), et plus aucun
+    `git fetch origin` ne ramenera jamais autre chose. Un demon dont le travail
+    est de recuperer la tete d'une PR se retrouve ainsi sans aucune tete de PR.
+
+    Mesure du 30/08/2026, dans le conteneur : `fatal: invalid reference:
+    origin/dev` au montage du worktree de `frontend#406`. Le message designe
+    `dev`, mais `origin/hotfix/405-...` manquait tout autant — le clone
+    n'avait que la branche par defaut.
+
+    `--no-single-branch` retablit `+refs/heads/*:refs/remotes/origin/*` en
+    GARDANT la profondeur : toutes les branches, tronquees a 50 commits. C'est
+    suffisant ici, `diff_stat` comparant l'arbre a `HEAD` et jamais a une base
+    lointaine.
+    """
+    return ["git", "clone", "--no-single-branch", "--depth", "50",
+            url, str(cible)]
+
+
 def create_setup_app(chemin_runner: Path, *, port: int = 8788) -> FastAPI:
     """L'application servie tant qu'il n'y a pas de configuration."""
     dossier = chemin_runner.parent
@@ -279,8 +301,7 @@ def create_setup_app(chemin_runner: Path, *, port: int = 8788) -> FastAPI:
             url = (f"https://x-access-token:{inst.token_read}"
                    f"@github.com/{inst.org}/{nom}.git")
             dire("cours", f"{nom} — clonage")
-            code, sortie = await _executer(["git", "clone", "--depth", "50",
-                                            url, str(cible)])
+            code, sortie = await _executer(commande_de_clonage(url, cible))
             if code != 0:
                 # Le jeton est DANS l'URL : ne jamais renvoyer la sortie brute.
                 dire("erreur", f"{nom} — clonage impossible (code {code})")

@@ -220,7 +220,13 @@ def _derivation(snap: PullSnapshot, deps: Deps) -> tuple[bool, str]:
     tete = snap.head_ref or ""
     if tete and tete in deps.profile.shared_refs:
         return True, tete
-    return False, deps.profile.forge.integration_branch
+    # La base d'une PR ordinaire est CELLE DE LA PR, pas la branche
+    # d'integration du profil : un hotfix vise `main`, pas `dev`. La forge la
+    # rend deja (`baseRefName`), elle n'etait simplement pas lue ici — et
+    # `frontend#406` a donc cherche son socle sur `origin/dev`. Repli sur le
+    # profil quand la forge ne dit rien : mieux vaut le socle habituel qu'un
+    # `origin/` vide.
+    return False, snap.base_ref or deps.profile.forge.integration_branch
 
 
 def _nom_de_branche(snap: PullSnapshot, deps: Deps, *, derivee: bool,
