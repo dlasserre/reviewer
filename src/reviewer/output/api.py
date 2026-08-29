@@ -63,7 +63,7 @@ def _lease_json(lease) -> dict[str, Any]:
 
 def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                store: StateStore, journal: Journal,
-               *, sse_keepalive_s: float = 20.0) -> FastAPI:
+               *, sse_keepalive_s: float = 20.0, reveil=None) -> FastAPI:
     app = FastAPI(title="claude-agent-runner", version="0.1.0",
                   description="Etat et flux d'evenements du demon local.")
 
@@ -99,6 +99,35 @@ def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         from reviewer.graph.build import topologie  # noqa: PLC0415
 
         return topologie()
+
+    @app.post("/sweep")
+    def sweep() -> dict[str, Any]:
+        """Declenche un balayage maintenant, au lieu d'attendre l'intervalle.
+
+        ── CE QUE CETTE ROUTE N'EST PAS ────────────────────────────────────
+
+        Elle ne modifie aucun reglage : elle ne dit pas ce que le demon a le
+        DROIT de faire, elle dit QUAND il fait ce qu'il ferait de toute facon.
+        Un reglage change le perimetre, un reveil change l'horloge.
+
+        Elle a quand meme un EFFET, et il est dit : demon arme, un balayage peut
+        lancer un agent tout de suite. Laisser croire qu'on rafraichit un
+        affichage serait la seule facon de mal faire ici.
+        """
+        if reveil is None:
+            raise HTTPException(409, "ce demon n'execute aucun job (--no-work)")
+        if not reveil.demander():
+            # Deux balayages concurrents liraient la meme forge et se
+            # disputeraient les memes baux : le second ne trouverait rien, et
+            # le journal montrerait deux bilans pour un seul travail.
+            return {"lance": False, "raison": "un passage est deja en cours"}
+        return {
+            "lance": True,
+            "arme": runner.writes_enabled,
+            "raison": ("le demon est arme : un agent peut demarrer"
+                       if runner.writes_enabled
+                       else "lecture seule : prompts construits, aucun agent"),
+        }
 
     @app.get("/history")
     def history(jours: int = 3, limite: int = 120) -> dict[str, Any]:

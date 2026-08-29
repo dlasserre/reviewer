@@ -170,15 +170,46 @@ def test_la_console_ne_depend_d_AUCUN_reseau_externe(app_ctx):
         assert motif not in page, f"dependance externe : {motif}"
 
 
-def test_la_console_n_expose_AUCUNE_ecriture(app_ctx):
-    # Le YAML est la frontiere de securite : il se relit, se versionne et se
-    # compare en revue. Un formulaire qui le reecrirait sortirait les droits de
-    # l'agent de tout ca.
+# Les routes qui ne LISENT pas. Cette liste est le contrat : y ajouter quelque
+# chose demande de l'ecrire ici, donc de le justifier devant quelqu'un.
+#
+# `/sweep` y figure parce qu'il ne change AUCUN reglage — il ne dit pas ce que
+# le demon a le droit de faire, il dit QUAND il fait ce qu'il ferait de toute
+# facon. Un reglage change le perimetre, un reveil change l'horloge.
+ROUTES_MUTANTES_AUTORISEES = {"/sweep"}
+
+
+def test_la_console_n_expose_AUCUNE_route_de_configuration(app_ctx):
+    """Le YAML est la frontiere de securite du demon : rien ne doit le reecrire.
+
+    Il se relit, se versionne et se compare en revue. Un agent dont les droits
+    changeraient depuis une page web, sans trace dans l'historique, n'aurait plus
+    de droits — il aurait des habitudes.
+
+    ── CE QUE CE TEST MESURAIT AVANT, ET POURQUOI C'ETAIT PLUS FAIBLE ──────
+
+    Il cherchait « POST » dans le HTML de la page. Exact tant qu'aucun POST
+    legitime n'existait, mais il regardait la PAGE et non la SURFACE : une route
+    d'ecriture que la page n'appelle pas serait passee sans un mot. Et il
+    interdisait un moyen plutot qu'un effet.
+    """
     client, _, _ = app_ctx
-    page = client.get("/").text
-    for interdit in ("method=\"post\"", "<form", "fetch(\"/", "method: 'POST'",
-                     "method: \"POST\""):
-        assert interdit.lower() not in page.lower(), f"surface d'ecriture : {interdit}"
+    mutantes = {
+        r.path for r in client.app.routes
+        if getattr(r, "methods", set()) - {"GET", "HEAD", "OPTIONS"}
+    }
+    assert mutantes == ROUTES_MUTANTES_AUTORISEES, (
+        "la surface mutante a change : "
+        f"{sorted(mutantes ^ ROUTES_MUTANTES_AUTORISEES)}. Si c'est voulu, "
+        "l'ecrire dans ROUTES_MUTANTES_AUTORISEES avec la raison."
+    )
+
+
+def test_la_console_n_a_AUCUN_formulaire(app_ctx):
+    # Une saisie de configuration commence toujours par la. La page
+    # d'INSTALLATION en a, elle — mais elle n'est servie que tant qu'il n'y a
+    # rien a proteger, et c'est un autre module.
+    assert "<form" not in app_ctx[0].get("/").text.lower()
 
 
 def test_la_sante_dit_l_armement_ET_le_parallelisme(app_ctx):

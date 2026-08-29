@@ -375,9 +375,25 @@ sa PR et son statut (`en cours`, `termine`, `arbitrage`, `echec`, `a blanc`,
 | **Condense** (defaut) | la disposition se CALCULE pour la place disponible : l'epine se replie en boustrophedon, et le nombre de colonnes est celui qui remplit le mieux |
 | **Vertical / Horizontal** | les deux mises en page figees, si on les prefere |
 | **Navigation** | molette pour zoomer au curseur, glisser pour deplacer, `Ajuster` ou double-clic pour recadrer |
+| **Balayer** | relit la forge MAINTENANT, sans attendre les cinq minutes |
 | **Test** | simule un cycle ENTIEREMENT dans le navigateur — n'appelle rien, n'ecrit rien, statut « test » |
 | **Journal** | le journal du demon, dans une modale |
 | **Vider** | MASQUE les cycles passes. N'efface RIEN sur le disque |
+
+### « Balayer » modifie-t-il quelque chose ?
+
+Non, et la distinction compte : il ne dit pas ce que le demon a le DROIT de
+faire, il dit QUAND il fait ce qu'il ferait de toute facon. Un reglage change le
+perimetre, un reveil change l'horloge.
+
+Il a quand meme un EFFET, et la reponse le DIT : demon arme, un balayage peut
+lancer un agent tout de suite. Laisser croire qu'on rafraichit un affichage
+serait la seule facon de mal faire ici.
+
+Un seul passage a la fois. Deux balayages concurrents liraient la meme forge et
+se disputeraient les memes baux : le second ne trouverait rien, et le journal
+montrerait deux bilans pour un seul travail — de quoi croire a un doublon la ou
+il n'y en a pas.
 
 ### Ce qui la rend possible, et qui est dans le code
 

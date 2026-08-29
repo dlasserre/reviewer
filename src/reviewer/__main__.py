@@ -420,11 +420,42 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
     return 0
 
 
+class Reveil:
+    """Ce qui interrompt l'attente entre deux passages.
+
+    La boucle attend `reconcile_every` OU ce signal, le premier des deux. Un
+    `sleep` nu ne peut pas etre interrompu : il faudrait attendre la fin du
+    delai pour qu'un reveil soit pris en compte, et un bouton qui agit dans
+    quatre minutes n'est pas un bouton.
+    """
+
+    def __init__(self) -> None:
+        self._signal = asyncio.Event()
+        self.en_cours = False
+        self.dernier: str | None = None
+
+    def demander(self) -> bool:
+        """Rend False si un passage tourne deja — deux se disputeraient les baux."""
+        if self.en_cours:
+            return False
+        self._signal.set()
+        return True
+
+    async def attendre(self, delai: float) -> bool:
+        """Attend le delai, ou le signal. Rend True si c'est le signal."""
+        try:
+            await asyncio.wait_for(self._signal.wait(), timeout=delai)
+        except asyncio.TimeoutError:
+            return False
+        self._signal.clear()
+        return True
+
+
 # ── serve ───────────────────────────────────────────────────────────────────
 
 async def _boucle_de_travail(runner: RunnerConfig,
                              profils: dict[str, ProfileConfig],
-                             limit: int) -> None:
+                             limit: int, reveil: "Reveil | None" = None) -> None:
     """Balaye et traite, indefiniment, toutes les `reconcile_every`.
 
     Le modele DECLENCHE SUR NIVEAU rend cette boucle suffisante a elle seule :
@@ -438,6 +469,8 @@ async def _boucle_de_travail(runner: RunnerConfig,
     """
     intervalle = runner.wake.reconcile_every
     while True:
+        if reveil is not None:
+            reveil.en_cours = True
         try:
             await _run(runner, profils, None, limit)
         except asyncio.CancelledError:
@@ -447,7 +480,14 @@ async def _boucle_de_travail(runner: RunnerConfig,
             # passage est indiscernable d'un demon qui n'a rien a faire.
             print(f"!! passage en echec : {type(e).__name__} : {e}",
                   file=sys.stderr)
-        await asyncio.sleep(intervalle)
+        finally:
+            if reveil is not None:
+                reveil.en_cours = False
+
+        if reveil is None:
+            await asyncio.sleep(intervalle)
+        elif await reveil.attendre(intervalle):
+            print("Balayage demande depuis la console.")
 
 
 def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
@@ -467,7 +507,8 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
     journal = Journal(runner.logs_dir)
     _reprendre_les_baux(store, journal)
 
-    app = create_app(runner, profils, store, journal)
+    reveil = Reveil() if travailler else None
+    app = create_app(runner, profils, store, journal, reveil=reveil)
     print(f"API locale : http://{runner.api.bind}:{runner.api.port}")
     print("  console : /   etat : /jobs   flux : /events   sante : /health")
     if travailler:
@@ -495,7 +536,7 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         taches = [asyncio.create_task(serveur.serve())]
         if travailler:
             taches.append(asyncio.create_task(
-                _boucle_de_travail(runner, profils, limit)))
+                _boucle_de_travail(runner, profils, limit, reveil)))
         try:
             await asyncio.gather(*taches)
         finally:

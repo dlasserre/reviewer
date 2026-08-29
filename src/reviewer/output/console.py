@@ -333,6 +333,7 @@ PAGE = """<!doctype html>
       <button id="b-vert" aria-pressed="false" title="Graphe vertical">&#8597; Vertical</button>
       <button id="b-hori" aria-pressed="false" title="Graphe horizontal">&#8596; Horizontal</button>
     </div>
+    <button id="b-balayer" title="Relire la forge maintenant, sans attendre l'intervalle">Balayer</button>
     <button id="b-test" title="Simule un cycle dans le navigateur, sans toucher au demon">Test</button>
     <button id="b-journal">Journal</button>
     <button id="b-vider" title="Masque les cycles passes ; n'efface rien sur le disque">Vider</button>
@@ -811,6 +812,8 @@ const QUOI = {
   "job.dry_run": ["a blanc", ""], "job.moteur": ["moteur", ""],
   "sweep.done": ["balayage", ""], "sweep.decision": ["decide", ""],
   "lease.reclaimed": ["bail", ""], "notify.dry_run": ["muet", ""],
+  "sweep.demande": ["balayage", "bon"], "sweep.refuse": ["balayage", ""],
+  "sweep.echec": ["balayage", "mauvais"],
 };
 const heure = (ts) => (ts || "").slice(11, 19);
 
@@ -1018,6 +1021,28 @@ $("#b-ajuster").onclick = ajuster;
 $("#b-cond").onclick = () => orienter("condense", { choix: true });
 $("#b-vert").onclick = () => orienter("vertical", { choix: true });
 $("#b-hori").onclick = () => orienter("horizontal", { choix: true });
+// Relire la forge MAINTENANT. Ce bouton ne change aucun reglage : il ne dit pas
+// ce que le demon a le droit de faire, il dit quand il fait ce qu'il ferait de
+// toute facon. Demon arme, un balayage peut lancer un agent tout de suite — la
+// reponse le DIT, plutot que de laisser croire a un rafraichissement d'affichage.
+$("#b-balayer").onclick = async () => {
+  const b = $("#b-balayer"), texte = b.textContent;
+  b.disabled = true; b.classList.add("vif"); b.textContent = "\u2026";
+  let mot = "?", genre = "sweep.echec", pourquoi = "";
+  try {
+    const r = await fetch("/sweep", {method: "POST"});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mot = "refuse"; pourquoi = d.detail || `${r.status}`; genre = "sweep.echec"; }
+    else if (d.lance) { mot = "lance"; pourquoi = d.raison || ""; genre = "sweep.demande"; }
+    else { mot = "en cours"; pourquoi = d.raison || ""; genre = "sweep.refuse"; }
+  } catch (e) { mot = "hors ligne"; pourquoi = String(e.message || e); }
+  journaliser({event: genre, ts: new Date().toISOString(), why: pourquoi});
+  b.textContent = mot;
+  setTimeout(() => {
+    b.textContent = texte; b.disabled = false; b.classList.remove("vif");
+  }, 2600);
+};
+
 $("#b-test").onclick = simuler;
 $("#b-journal").onclick = () => $("#modale").showModal();
 $("#b-fermer").onclick = () => $("#modale").close();
