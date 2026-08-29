@@ -863,7 +863,13 @@ function absorber(e, opts) {
     if (!(opts && opts.historique)
         && (!choisi || (jobs.get(choisi) || {}).statut !== "en_cours")) choisi = e.job_id;
   }
-  if (e.event === "graph.node" && e.state && j.chemin[j.chemin.length - 1] !== e.state) {
+  // Un evenement anterieur a la borne est DEJA dans le chemin rendu par
+  // `/history`. Le garde « pas deux fois de suite » ne suffit pas : une sequence
+  // rejouee recommence par `observe` alors que le dernier noeud connu est
+  // `dry_run`, et rien ne s'y oppose.
+  const deja = j.borne && e.ts && e.ts <= j.borne;
+  if (e.event === "graph.node" && e.state && !deja
+      && j.chemin[j.chemin.length - 1] !== e.state) {
     j.chemin.push(e.state);
   }
   const fin = FINS[e.event];
@@ -978,6 +984,10 @@ async function demarrer() {
       id: h.job_id, repo: h.repository || "?", pr: h.pull_request || 0,
       chemin: h.chemin || [], statut: h.statut, debut: h.debut,
       raison: h.raison || "", etapes: [],
+      // La BORNE de ce que le serveur a deja compte. Le flux SSE rejoue ses
+      // derniers evenements et `/jobs` rend les memes : sans elle, les noeuds
+      // deja dans `chemin` s'y rempilent, et un cycle de 5 noeuds s'affiche a 10.
+      borne: h.fin || h.debut || "",
     });
   }
   const liste = visibles();

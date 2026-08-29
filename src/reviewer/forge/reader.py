@@ -311,11 +311,36 @@ class GitHubReader:
         if r.status_code != 200:
             return (), None, False
         motif = self._ignored or compile_ignored(None)
+
+        # ── UN WORKFLOW NE COMPTE QU'UNE FOIS ──────────────────────────────
+        #
+        # `/actions/runs` rend TOUS les runs d'un commit, re-runs compris. Les
+        # empiler faisait cohabiter l'echec et le succes qui l'a corrige, et
+        # `decide` voyait rouge une CI reparee.
+        #
+        # Mesure du 29/08/2026 sur `mobile#125` : `Mobile CI` echoue a 22:57,
+        # reussit a 23:14 — et le demon la voyait encore rouge a 23:16, puis a
+        # chaque passage. Une fois arme, c'est un cycle d'agent toutes les cinq
+        # minutes contre un probleme qui n'existe plus, et un correctif propose
+        # contre rien.
+        #
+        # On TRIE plutot que de se fier a l'ordre rendu : GitHub sert le plus
+        # recent d'abord, mais faire dependre une regle de securite d'un detail
+        # d'API non contractuel, c'est attendre qu'il change.
+        runs = list((r.json() or {}).get("workflow_runs") or [])
+        runs.sort(key=lambda x: (x.get("updated_at") or x.get("created_at") or ""),
+                  reverse=True)
+
         checks: list[Check] = []
         dernier: datetime | None = None
-        for run in (r.json() or {}).get("workflow_runs") or []:
+        vus: set[str] = set()
+        for run in runs:
+            nom = run.get("name") or run.get("display_title") or "?"
+            if nom in vus:
+                continue          # un run plus ancien du meme workflow
+            vus.add(nom)
             c = Check(
-                name=run.get("name") or run.get("display_title") or "?",
+                name=nom,
                 status=(run.get("status") or "").lower(),
                 conclusion=(run.get("conclusion") or "").lower() or None,
             )

@@ -329,3 +329,101 @@ async def test_une_erreur_hors_checks_reste_bloquante():
         with pytest.raises(ForgeError) as e:
             await g.open_pulls("backend")
     assert "Pull requests: Read" in str(e.value)
+
+
+# ── Le repli par l'API Actions : un re-run efface l'echec ───────────────────
+#
+# Mesure du 29/08/2026 sur `mobile#125` : `Mobile CI` echoue a 22:57, reussit a
+# 23:14, et le demon la voyait encore rouge a 23:16. Il decidait « il y a du
+# travail » sur une PR verte, a chaque passage — donc, une fois arme, un cycle
+# d'agent toutes les cinq minutes contre un probleme qui n'existe plus.
+
+
+def _runs(*entrees):
+    """Ce que rend `/actions/runs` : le plus recent d'abord."""
+    return {"workflow_runs": [
+        {"name": nom, "status": "completed", "conclusion": conclusion,
+         "updated_at": quand, "created_at": quand}
+        for nom, conclusion, quand in entrees
+    ]}
+
+
+async def test_un_re_run_reussi_EFFACE_l_echec_precedent(monkeypatch):
+    lecteur = GitHubReader("Org", "jeton")
+
+    class FausseReponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return _runs(
+                ("Mobile CI", "success", "2026-08-29T23:14:17Z"),
+                ("Mobile CI", "failure", "2026-08-29T22:57:51Z"),
+            )
+
+    class FauxClient:
+        @staticmethod
+        async def get(url, **kw):
+            return FausseReponse()
+
+    lecteur._client = FauxClient()
+    checks, _conclus, lisible = await lecteur._checks_par_actions("mobile", "abc")
+
+    assert lisible
+    assert len(checks) == 1, "un workflow ne doit compter qu'une fois"
+    assert checks[0].conclusion == "success"
+    assert not any(c.failed for c in checks), "l'echec precedent doit avoir disparu"
+
+
+async def test_deux_workflows_DIFFERENTS_restent_deux_checks():
+    # La deduplication porte sur le NOM du workflow, pas sur le commit : deux
+    # workflows distincts sont deux signaux distincts, et en ecraser un
+    # rendrait une CI rouge invisible.
+    lecteur = GitHubReader("Org", "jeton")
+
+    class FausseReponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return _runs(
+                ("Mobile CI", "success", "2026-08-29T23:14:17Z"),
+                ("Delivery pipeline", "failure", "2026-08-29T23:10:00Z"),
+            )
+
+    class FauxClient:
+        @staticmethod
+        async def get(url, **kw):
+            return FausseReponse()
+
+    lecteur._client = FauxClient()
+    checks, _c, _l = await lecteur._checks_par_actions("mobile", "abc")
+    assert len(checks) == 2
+    assert any(c.failed for c in checks), "l'echec de l'autre workflow doit rester"
+
+
+async def test_l_ordre_rendu_par_la_forge_n_est_PAS_une_hypothese():
+    # GitHub rend le plus recent d'abord, mais s'y fier sans le verifier ferait
+    # dependre une regle de securite d'un detail d'API non contractuel. On trie.
+    lecteur = GitHubReader("Org", "jeton")
+
+    class FausseReponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            # A L'ENVERS : le plus ancien en premier.
+            return _runs(
+                ("Mobile CI", "failure", "2026-08-29T22:57:51Z"),
+                ("Mobile CI", "success", "2026-08-29T23:14:17Z"),
+            )
+
+    class FauxClient:
+        @staticmethod
+        async def get(url, **kw):
+            return FausseReponse()
+
+    lecteur._client = FauxClient()
+    checks, _c, _l = await lecteur._checks_par_actions("mobile", "abc")
+    assert len(checks) == 1
+    assert checks[0].conclusion == "success", "c'est le PLUS RECENT qui compte"
