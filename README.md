@@ -36,26 +36,43 @@ sauvegarde a cote avant d'etre remplace.
 
 ### En conteneur
 
+Cinq commandes, dans cet ordre.
+
 ```bash
-cp .env.exemple .env          # y mettre les jetons
-UID=$(id -u) GID=$(id -g) docker compose build
+git clone https://github.com/dlasserre/reviewer.git
+cd reviewer
+cp .env.exemple .env                    # 1. y mettre les jetons
+docker compose build                    # 2. construire l'image
+docker compose run --rm init            # 3. l'assistant, DANS le conteneur
 ```
 
-**Le conteneur a ses PROPRES clones.** On les depose une fois dans son volume :
+L'assistant reconnait le conteneur et propose les defauts qui vont avec : etat
+sous `/var/agent-runner`, depots sous `/repos`, console ouverte sur le namespace
+reseau. Il verifie chaque jeton contre la forge, liste vos depots, et ecrit
+`runner.yaml` et `profils/<projet>.yaml`.
 
 ```bash
+                                        # 4. cloner les depots dans le volume
 docker compose run --rm outils -lc \
   "git clone https://x-access-token:$PAT_READ@github.com/ORG/DEPOT.git /repos/DEPOT
    cd /repos/DEPOT && npm ci"
+
+docker compose up -d                    # 5. lancer le demon
 ```
 
-Puis :
+Console sur <http://127.0.0.1:8788>. Suivre : `docker compose logs -f runner`.
 
-```bash
-docker compose up -d
-```
+#### Qui a le droit d'ecrire quoi
 
-Console sur <http://127.0.0.1:8788>.
+| Service | `/config` | Pourquoi |
+|---|---|---|
+| `init` | **ecriture** | c'est lui qui produit la configuration |
+| `runner` | lecture seule | le YAML est la frontiere de securite du demon : il dit quels depots sont modifiables et si les ecritures sont armees. Un demon qui pourrait le reecrire n'aurait plus de frontiere |
+
+Le DOSSIER est monte, pas les fichiers un par un : monter `./runner.yaml`
+quand il n'existe pas encore — le cas de tout nouveau venu — fait creer a Docker
+un **repertoire** a sa place, et le demon echoue en disant qu'il ne sait pas lire
+sa configuration. Le symptome ne designe pas la cause.
 
 #### Pourquoi le conteneur ne monte pas vos dossiers
 
@@ -70,7 +87,7 @@ Le probleme est structurel, pas accidentel :
 
 - le conteneur est Linux, l'hote souvent non ; `node_modules` et `.venv` ne se
   partagent pas entre les deux ;
-- le demon a pourtant besoin des dependances **a cote du depot** pour lancer les
+- le demon a pourtant besoin des dependances **a cote du depot** pour lancer ses
   verifications — il ne commite pas de code dont les tests echouent.
 
 Deux besoins incompatibles sur les memes fichiers. La seule sortie propre est de
@@ -80,13 +97,12 @@ que fait n'importe quel agent de CI.
 Sur un hote **Linux**, et seulement la, un bind mount reste possible et economise
 le disque — remplacer `- repos:/repos` par `- ${REPOS}:/repos` dans le compose.
 
-#### Trois autres differences
+#### Deux autres differences
 
 | | |
 |---|---|
 | **Secrets** | pas de trousseau : les references doivent etre `env:NOM`, alimentees par le `.env` |
-| **Chemins** | le profil reste ECRIT POUR L'HOTE ; `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
-| **`runner.yaml`** | celui du conteneur n'est pas celui d'un poste : etat sous `/var/agent-runner`, `bind: 0.0.0.0` avec `reseau_confine: true`. `exemples/runner.yaml` est ecrit pour ca |
+| **Chemins** | un profil ecrit pour un poste reste utilisable : `AGENT_RUNNER_WORKSPACE=/repos`, pose par le compose, reecrit `workspace` au chargement |
 
 ## Configuration
 

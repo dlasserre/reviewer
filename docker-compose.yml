@@ -1,6 +1,8 @@
 # Le demon de revue.
 #
-#   docker compose run --rm outils     installer les dependances d'un depot
+#   docker compose build               construire l'image
+#   docker compose run --rm init       l'assistant : questions, verifications
+#   docker compose run --rm outils     cloner un depot, installer ses dependances
 #   docker compose up -d               lancer le demon
 #   docker compose logs -f runner      le suivre
 #
@@ -48,8 +50,12 @@ services:
       # La configuration, en LECTURE SEULE. Le YAML est la frontiere de securite
       # du demon : il dit quels depots sont modifiables et si les ecritures sont
       # armees. Un conteneur qui pourrait le reecrire n'aurait plus de frontiere.
-      - ./runner.yaml:/config/runner.yaml:ro
-      - ./profils:/config/profils:ro
+      #
+      # Le DOSSIER, pas les fichiers un par un : monter `./runner.yaml` quand il
+      # n'existe pas encore — le cas de tout nouveau venu — fait creer a Docker
+      # un REPERTOIRE a sa place, et le demon echoue en disant qu'il ne sait pas
+      # lire sa configuration. Le symptome ne designe pas la cause.
+      - ./:/config:ro
 
       # Les depots DU CONTENEUR. Un volume, pas un montage de vos dossiers.
       #
@@ -83,8 +89,28 @@ services:
       # l'etat des jobs — a tout le reseau.
       - "127.0.0.1:8788:8788"
 
-  # Un shell dans la MEME image et sur les MEMES volumes, pour installer les
-  # dependances des depots une fois pour toutes. Ne demarre jamais tout seul.
+  # L'assistant d'installation. Le SEUL service qui puisse ECRIRE dans le
+  # dossier du projet, et seulement le temps de repondre aux questions : c'est
+  # lui qui produit `runner.yaml` et `profils/<projet>.yaml`.
+  #
+  # Il reconnait le conteneur et propose les defauts qui vont avec — etat sous
+  # /var/agent-runner, depots sous /repos, console ouverte sur le namespace
+  # reseau. Lance sur un poste, il proposerait autre chose.
+  init:
+    <<: *construction
+    profiles: ["init"]
+    environment:
+      PAT_READ: "${PAT_READ:?le jeton de lecture de la forge est requis}"
+      PAT_WRITE: "${PAT_WRITE:-}"
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN:-}"
+      AGENT_RUNNER_WORKSPACE: /repos
+    volumes:
+      - ./:/config
+      - repos:/repos
+    command: ["-c", "/config/runner.yaml", "init"]
+
+  # Un shell dans la MEME image et sur les MEMES volumes, pour cloner les depots
+  # et y installer leurs dependances. Ne demarre jamais tout seul.
   outils:
     <<: *construction
     profiles: ["outils"]

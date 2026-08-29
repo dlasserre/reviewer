@@ -36,6 +36,7 @@ mefier. Le trousseau, lui, fait tenir la cle par le systeme. Voir `SecretRef`.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tomllib
@@ -49,6 +50,18 @@ __all__ = ["assistant"]
 
 SERVICE = "agent-runner-lg"
 API = "https://api.github.com"
+
+
+def en_conteneur() -> bool:
+    """Tourne-t-on dans un conteneur ?
+
+    Deux indices, et le second suffit a lui seul : `/.dockerenv` est pose par
+    Docker, et `AGENT_RUNNER_WORKSPACE` par notre propre compose. On ne cherche
+    pas a etre exhaustif — se tromper ne coute qu'un defaut propose, que
+    l'utilisateur voit et peut changer.
+    """
+    return Path("/.dockerenv").exists() or bool(
+        os.environ.get("AGENT_RUNNER_WORKSPACE", "").strip())
 
 
 # ── Poser une question ──────────────────────────────────────────────────────
@@ -250,7 +263,16 @@ def trousseau_disponible() -> bool:
 
 # ── Les fichiers ────────────────────────────────────────────────────────────
 
-def _yaml_runner(*, racine: Path, port: int, oauth: str, arme: bool) -> str:
+def _yaml_runner(*, racine: Path, port: int, oauth: str, arme: bool,
+                 conteneur: bool = False) -> str:
+    # En conteneur, la frontiere n'est plus la boucle locale mais le NAMESPACE
+    # RESEAU : `127.0.0.1` a l'interieur n'est joignable par personne, meme avec
+    # une publication de port. Ecouter sur 0.0.0.0 et publier cote hote en
+    # 127.0.0.1 donne exactement la meme surface qu'une ecoute locale.
+    ecoute = ("bind: 0.0.0.0\n  # Le conteneur EST la frontiere. La publication "
+              "cote hote doit rester\n  # sur 127.0.0.1 — sinon la console "
+              "s'ouvre a tout le reseau.\n  reseau_confine: true"
+              if conteneur else "bind: 127.0.0.1")
     return f"""# La MACHINE, pas les projets. Un seul de ces fichiers, jamais copie.
 # Ecrit par `agent-runner-lg init`. Relisez-le : rien ici n'est irreversible,
 # mais tout y est lu au demarrage.
@@ -268,7 +290,7 @@ profiles_dir:   ./profils
 # L'API locale sert la console. Elle n'ecoute QUE sur la boucle locale, et la
 # validation refuse 0.0.0.0 : le demon n'expose aucun port entrant.
 api:
-  bind: 127.0.0.1
+  {ecoute}
   port: {port}
 
 wake:
@@ -409,13 +431,22 @@ def assistant(chemin_runner: Path) -> int:
     print("  est toujours sauvegarde avant d'etre remplace.")
 
     dossier = chemin_runner.parent.resolve()
+    conteneur = en_conteneur()
+    if conteneur:
+        print()
+        print("  Conteneur detecte. Les defauts proposes sont ceux du conteneur :")
+        print("  etat sous /var/agent-runner, depots sous /repos, console ouverte")
+        print("  sur le namespace reseau (la publication cote hote la borne).")
 
     # ── 1. Ou vivent l'etat et les journaux ────────────────────────────────
     _titre("Ou ranger l'etat du demon")
     print("  Baux, journaux, worktrees et configuration Claude dediee.")
     print("  HORS d'un repertoire cache : un worktree sous un dossier commencant")
     print("  par un point casse la decouverte de tests de jest et consorts.")
-    racine = Path(demander("Racine", str(dossier / "var"))).expanduser().resolve()
+    defaut_racine = "/var/agent-runner" if conteneur else str(dossier / "var")
+    racine = Path(demander("Racine", defaut_racine)).expanduser()
+    if not conteneur:
+        racine = racine.resolve()
     if any(p.startswith(".") for p in racine.parts):
         print("     !! ce chemin passe par un repertoire cache. `check` le signalera.")
 
@@ -482,8 +513,12 @@ def assistant(chemin_runner: Path) -> int:
         print(f"  Aucun depot visible dans « {org} » avec ce jeton.", file=sys.stderr)
         return 2
 
-    workspace = Path(demander(
-        "Ou sont les copies locales", str(dossier.parent))).expanduser().resolve()
+    # En conteneur, les depots sont dans le volume : ni le dossier de l'hote ni
+    # ses chemins n'ont de sens ici.
+    defaut_ws = "/repos" if conteneur else str(dossier.parent)
+    workspace = Path(demander("Ou sont les copies locales", defaut_ws)).expanduser()
+    if not conteneur:
+        workspace = workspace.resolve()
 
     options = []
     for d in depots_api:
@@ -567,7 +602,7 @@ def assistant(chemin_runner: Path) -> int:
 
     for cible, contenu in (
         (chemin_runner, _yaml_runner(racine=racine, port=8788, oauth=ref_oauth,
-                                     arme=False)),
+                                     arme=False, conteneur=conteneur)),
         (chemin_profil, _yaml_profil(projet=projet, org=org, workspace=workspace,
                                      lecture=ref_lecture, ecriture=ref_ecriture,
                                      notify=notify, relecteurs=relecteurs,
