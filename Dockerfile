@@ -56,6 +56,16 @@ RUN pip install --no-cache-dir .
 # worktree ne se cree pas.
 RUN git config --system --add safe.directory '*'
 
+# Les points de montage des volumes, crees DANS l'image et au bon proprietaire.
+#
+# Un volume nomme vide est initialise a partir du contenu de l'image a ce
+# chemin, droits compris. Si le chemin n'existe pas, Docker cree le point de
+# montage en root:root — et le conteneur, qui tourne sous `runner`, ne peut rien
+# y ecrire. Le symptome parle alors de git (« could not create work tree dir …
+# Permission denied ») et envoie chercher la cause du mauvais cote.
+RUN mkdir -p /repos /var/agent-runner \
+ && chown -R "${UID}:${GID}" /repos /var/agent-runner
+
 USER runner
 WORKDIR /config
 

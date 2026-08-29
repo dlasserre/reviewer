@@ -59,6 +59,19 @@ docker compose run --rm init            # 4. l'assistant, DANS le conteneur
 docker compose up -d                    # 5. lancer le demon
 ```
 
+> **« Permission denied » sur `/repos` ou `/var/agent-runner` ?** Un volume
+> nomme n'herite des droits de l'image qu'a sa PREMIERE utilisation, quand il
+> est encore vide. Un volume cree avant que l'image ne declare ces repertoires
+> reste en `root`, et le conteneur — qui tourne sous un utilisateur non
+> privilegie — ne peut rien y ecrire. Le symptome parle de git (« could not
+> create work tree dir ... Permission denied ») et envoie chercher la cause du
+> mauvais cote. Le supprimer et recommencer :
+>
+> ```bash
+> docker compose down -v && docker compose build
+> ```
+
+
 L'assistant reconnait le conteneur et propose les defauts qui vont avec : etat
 sous `/var/agent-runner`, depots sous `/repos`, console ouverte sur le namespace
 reseau. Il verifie chaque jeton contre la forge, liste vos depots, et ecrit
