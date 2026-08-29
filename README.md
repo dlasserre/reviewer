@@ -145,6 +145,67 @@ relit l'etat et on en deduit le travail. Un reveil manque ne coute donc que de
 la latence, jamais du travail — et une livraison webhook perdue se rattrape
 toute seule au passage suivant.
 
+## Plusieurs developpeurs
+
+Le modele retenu : **un demon par developpeur**. Chacun lance le sien, avec ses
+propres jetons, sur ses propres PR.
+
+### Pourquoi le perimetre n'est pas optionnel
+
+Les baux — ce qui empeche deux jobs de prendre la meme PR — vivent dans une base
+**sqlite locale**. Deux demons sur deux machines ont deux bases, donc **aucune
+exclusion mutuelle**. Sans perimetre, ils prendraient la meme PR au meme moment,
+pousseraient sur la meme branche, repondraient deux fois dans les memes fils, et
+consommeraient deux fois le quota.
+
+Le bail ne peut pas resoudre ca sans stockage partage. Ce qui le resout, c'est de
+rendre les ensembles de travail **disjoints** :
+
+```yaml
+scope:
+  authors:
+    - moi          # ne traiter que les PR que J'AI ouvertes
+```
+
+`agent-runner-lg init` le propose par defaut, avec le compte du jeton de lecture.
+
+Une liste **vide** prend toutes les PR. C'est le bon reglage dans un seul cas :
+un demon **unique**, partage par une equipe, tournant sous une identite de
+service. Des qu'il y en a deux sur les memes depots, il faut la renseigner — et
+le symptome d'un oubli (deux reponses identiques dans un fil) ne designe pas la
+cause.
+
+### Ce que chaque developpeur installe
+
+```bash
+git clone git@github.com:dlasserre/reviewer.git
+cd reviewer
+python -m venv .venv && .venv/bin/pip install -e ".[keyring]"
+.venv/bin/agent-runner-lg init
+```
+
+L'assistant demande ses jetons, les verifie contre la forge, liste les depots
+qu'ils voient, et ecrit une configuration a son nom. Les fichiers produits ne
+sont pas versionnes : chacun a la sienne.
+
+### Deux points a trancher en equipe
+
+Le perimetre ne les regle pas, et ils changent ce que voient les autres.
+
+| | |
+|---|---|
+| **Sous quel compte l'agent ecrit** | aujourd'hui le PAT de chacun : les commits et les reponses portent le nom du developpeur. Cinq developpeurs, cinq identites sur les memes depots. Une GitHub App ou un compte de service donnerait une identite unique — mais c'est un autre mecanisme de jeton |
+| **Quel quota Claude** | `CLAUDE_CODE_OAUTH_TOKEN` est un abonnement **personnel**. Plusieurs demons dessus le vident, et la personne dont c'est le compte le decouvre en se faisant limiter. Une cle API reglerait ca, mais la consommation bascule sur la facturation a l'usage |
+
+### Ce qui ne se partage pas
+
+- **La base d'etat** (`state_db`) : baux, curseurs de remarques, cycles. Deux
+  demons qui la partageraient sans partager le reste se croiraient mutuellement
+  en train de travailler.
+- **Les worktrees** : un arbre par PR, derive d'un clone local.
+- **Le port de la console** : 8788 par defaut. Deux demons sur une meme machine
+  en demandent deux.
+
 ## Ce qui change, et ce qui ne change pas
 
 | | |
