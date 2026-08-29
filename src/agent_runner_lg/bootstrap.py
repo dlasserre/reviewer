@@ -304,7 +304,8 @@ max_parallel: 3
 
 def _yaml_profil(*, projet: str, org: str, workspace: Path, lecture: str,
                  ecriture: str | None, notify: str, relecteurs: list[str],
-                 depots: list[dict[str, Any]]) -> str:
+                 depots: list[dict[str, Any]],
+                 auteurs: list[str] | None = None) -> str:
     lignes = [
         f"# Le projet « {projet} ». Copier ce fichier suffit a ajouter un projet :",
         "# le moteur n'est pas touche.",
@@ -342,6 +343,23 @@ def _yaml_profil(*, projet: str, org: str, workspace: Path, lecture: str,
     lignes += [f"    - {r}" for r in relecteurs] or ["    []"]
 
     lignes.append("")
+    if auteurs:
+        lignes += [
+            "# QUELLES PR ce demon prend en charge.",
+            "#",
+            "# Les baux vivent dans une base sqlite LOCALE : deux demons sur deux",
+            "# machines n'ont AUCUNE exclusion mutuelle. Sans ce perimetre, ils",
+            "# prendraient la meme PR, pousseraient sur la meme branche et",
+            "# repondraient deux fois dans les memes fils.",
+            "#",
+            "# Vide = toutes les PR. C'est le bon reglage pour un demon UNIQUE,",
+            "# partage par une equipe sous une identite de service.",
+            "scope:",
+            "  authors:",
+        ]
+        lignes += [f"    - {a}" for a in auteurs]
+        lignes.append("")
+
     if notify:
         lignes += ["human:", f'  notify: "{notify}"']
     else:
@@ -502,7 +520,24 @@ def assistant(chemin_runner: Path) -> int:
         depots.append({"nom": nom, "path": str(chemin), "access": acces,
                        "checks": checks})
 
-    # ── 5. Qui fait travailler l'agent ─────────────────────────────────────
+    # ── 5. Le perimetre ────────────────────────────────────────────────────
+    _titre("Quelles PR ce demon prend en charge")
+    print("  Si plusieurs personnes lancent chacune leur demon sur les MEMES")
+    print("  depots, ils se marchent dessus : les baux sont locaux, donc il n'y")
+    print("  a aucune exclusion entre machines. Deux agents prendraient la meme")
+    print("  PR, pousseraient sur la meme branche, repondraient deux fois.")
+    print("  Restreindre par auteur rend les ensembles de travail disjoints.")
+    auteurs: list[str] = []
+    if demander_oui(f"Ne traiter que les PR ouvertes par « {qui['login']} » ?"):
+        auteurs = [qui["login"]]
+    else:
+        print("  Vide = toutes les PR. A ne laisser vide que s'il n'y a QU'UN")
+        print("  demon sur ces depots.")
+        auteurs = [x.strip() for x in
+                   demander("Logins, separes par des virgules",
+                            obligatoire=False).split(",") if x.strip()]
+
+    # ── 6. Qui fait travailler l'agent ─────────────────────────────────────
     _titre("Les relecteurs de confiance")
     print("  QUI a le droit de declencher un cycle. Cette liste vient du profil,")
     print("  JAMAIS de la charge utile : c'est elle qui empeche un commentaire")
@@ -515,12 +550,12 @@ def assistant(chemin_runner: Path) -> int:
     print("  Sans mention, une question posee dans un fil ne notifie personne.")
     notify = demander("Mention (ex. @moi)", obligatoire=False)
 
-    # ── 6. Le moteur ───────────────────────────────────────────────────────
+    # ── 7. Le moteur ───────────────────────────────────────────────────────
     _titre("Le moteur")
     oauth = demander_secret("Jeton OAuth Claude (CLAUDE_CODE_OAUTH_TOKEN)")
     ref_oauth = ranger("CLAUDE_CODE_OAUTH_TOKEN", oauth, "identifiant du SDK Claude")
 
-    # ── 7. Ecriture ────────────────────────────────────────────────────────
+    # ── 8. Ecriture ────────────────────────────────────────────────────────
     _titre("Ecriture")
     projet = demander("Nom du projet", org.lower())
     chemin_profil = dossier / "profils" / f"{projet}.yaml"
@@ -536,7 +571,7 @@ def assistant(chemin_runner: Path) -> int:
         (chemin_profil, _yaml_profil(projet=projet, org=org, workspace=workspace,
                                      lecture=ref_lecture, ecriture=ref_ecriture,
                                      notify=notify, relecteurs=relecteurs,
-                                     depots=depots)),
+                                     depots=depots, auteurs=auteurs)),
     ):
         cible.parent.mkdir(parents=True, exist_ok=True)
         if copie := sauvegarder(cible):

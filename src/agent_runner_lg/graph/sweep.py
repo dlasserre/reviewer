@@ -39,7 +39,7 @@ from agent_runner_lg.config import Access, ProfileConfig
 from agent_runner_lg.output.events import Event, Journal
 from agent_runner_lg.rules.machine import (BRANCHES_PARTAGEES, Action, Decision,
                                            PullSnapshot, State, compile_ignored,
-                                           decide)
+                                           decide, normalise_login)
 from agent_runner_lg.store.leases import PullState, StateStore
 
 __all__ = [
@@ -135,6 +135,23 @@ def avec_etat_local(pull: PullSnapshot, store: StateStore, projet: str,
     )
 
 
+def _auteur_dans_le_perimetre(auteur: str, logins: list[str]) -> bool:
+    """Cette PR appartient-elle a ce demon ?
+
+    Liste VIDE = tout le monde. C'est le cas d'un demon unique, partage par une
+    equipe : lui faire tout refuser transformerait une absence d'avis en
+    interdiction totale.
+
+    La comparaison passe par `normalise_login` : la forme GraphQL d'un compte ne
+    reconnait pas toujours sa forme REST, et un perimetre qui ne reconnait
+    personne est un demon qui ne fait rien — sans que rien ne dise pourquoi.
+    """
+    if not logins:
+        return True
+    connus = {normalise_login(x) for x in logins}
+    return normalise_login(auteur) in connus
+
+
 def _branche_autorisee(branche: str, motifs: list[str]) -> bool:
     """La branche de tete correspond-elle a un motif du profil ?
 
@@ -204,6 +221,11 @@ async def sweep_profile(
             continue
 
         for brut in pulls:
+            # Le perimetre AVANT tout le reste : une PR hors perimetre n'est pas
+            # « rien a faire », elle n'appartient pas a ce demon. La compter dans
+            # le bilan ferait croire qu'on s'en occupe.
+            if not _auteur_dans_le_perimetre(brut.author, profile.scope.authors):
+                continue
             pull = avec_etat_local(brut, store, profile.project)
 
             # La liste `branches` du profil dit sur quelles branches l'agent a

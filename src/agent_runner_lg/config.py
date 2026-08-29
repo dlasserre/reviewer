@@ -460,6 +460,29 @@ class MoteurConfig(Strict):
     _modele_non_vide = field_validator("model")(_valider_modele)
 
 
+class ScopeConfig(Strict):
+    """Quelles PR CE demon prend en charge.
+
+    ── POURQUOI CE REGLAGE EXISTE ──────────────────────────────────────────
+
+    Les baux vivent dans une base sqlite LOCALE. Deux demons sur deux machines
+    ont deux bases, donc aucune exclusion mutuelle : ils prendraient la meme PR
+    en meme temps, pousseraient sur la meme branche, repondraient deux fois dans
+    les memes fils, et consommeraient deux fois le quota.
+
+    Le bail ne peut pas resoudre ca sans stockage partage. Ce qui le resout,
+    c'est de rendre les ensembles de travail DISJOINTS.
+
+    `authors` vide = TOUTES les PR. C'est le bon defaut pour un demon unique,
+    partage par une equipe et tournant sous une identite de service. Des qu'il y
+    a plusieurs demons sur les memes depots, il faut le renseigner — sinon ils se
+    marchent dessus, et le symptome (deux reponses identiques dans un fil) ne
+    designe pas la cause.
+    """
+
+    authors: list[str] = Field(default_factory=list)
+
+
 class HumanConfig(Strict):
     """A qui l'agent s'adresse quand il ne peut pas trancher, et comment.
 
@@ -605,6 +628,7 @@ class ProfileConfig(Strict):
     forge: ForgeConfig
     reviewers: ReviewersConfig = Field(default_factory=ReviewersConfig)
     human: HumanConfig = Field(default_factory=HumanConfig)
+    scope: ScopeConfig = Field(default_factory=ScopeConfig)
     issues: IssuesConfig = Field(default_factory=IssuesConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     plugins: list[Path] = Field(default_factory=list)

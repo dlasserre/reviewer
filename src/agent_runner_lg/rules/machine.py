@@ -388,6 +388,11 @@ class PullSnapshot:
     # Nom de la branche de tete. Le worktree se monte dessus : sans lui, on ne
     # saurait pas sur quoi travailler, seulement quel commit regarder.
     head_ref: str = ""
+    # Qui a ouvert la PR. Le moteur ne s'en sert PAS pour decider — c'est le
+    # balayage qui l'emploie, pour dire quelles PR ce demon prend en charge.
+    # Le distinguer compte : une regle du moteur vaut pour tout le monde, un
+    # perimetre appartient a une installation.
+    author: str = ""
     # Branche VISEE. Elle etait lue par la requete GraphQL et jetee aussitot :
     # le demon savait d'ou venait une PR, jamais ou elle allait. Il ne pouvait
     # donc pas distinguer une PR de livraison (`dev` -> `main`) d'une PR de

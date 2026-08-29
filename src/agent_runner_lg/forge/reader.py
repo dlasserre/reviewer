@@ -38,6 +38,7 @@ query($owner: String!, $name: String!, $prs: Int!, $threads: Int!, $msgs: Int!) 
       nodes {
         number
         isDraft
+        author { login }
         merged
         closed
         headRefName
@@ -353,6 +354,7 @@ class GitHubReader:
                 repo=repo,
                 head_sha=pr.get("headRefOid") or "",
                 head_ref=pr.get("headRefName") or "",
+                author=((pr.get("author") or {}).get("login") or ""),
                 base_ref=pr.get("baseRefName") or "",
                 draft=bool(pr.get("isDraft")),
                 merged=bool(pr.get("merged")),

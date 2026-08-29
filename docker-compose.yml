@@ -7,18 +7,24 @@
 # Les secrets viennent d'un fichier `.env` A COTE de ce fichier, jamais de ce
 # fichier lui-meme : `docker-compose.yml` se versionne, `.env` non.
 
+# La construction, ecrite UNE fois. Les deux services la partagent : un service
+# qui nomme une image sans savoir la batir fait tenter un `pull` a compose, et
+# l'erreur — « pull access denied » — n'evoque pas la cause.
+x-construction: &construction
+  build:
+    context: .
+    args:
+      # Sous Linux, faire correspondre l'UID a celui de l'hote : l'agent ecrit
+      # dans des worktrees derives de depots montes, et un fichier cree par un
+      # autre UID devient impossible a modifier depuis l'hote.
+      #   UID=$(id -u) GID=$(id -g) docker compose build
+      UID: "${UID:-1000}"
+      GID: "${GID:-1000}"
+  image: agent-runner-lg
+
 services:
   runner:
-    build:
-      context: .
-      args:
-        # Sous Linux, faire correspondre l'UID a celui de l'hote : l'agent ecrit
-        # dans des worktrees derives de depots montes, et un fichier cree par un
-        # autre UID devient impossible a modifier depuis l'hote.
-        #   UID=$(id -u) GID=$(id -g) docker compose build
-        UID: "${UID:-1000}"
-        GID: "${GID:-1000}"
-    image: agent-runner-lg
+    <<: *construction
     restart: unless-stopped
 
     environment:
@@ -58,7 +64,7 @@ services:
   # Un shell dans la MEME image et sur les MEMES volumes, pour installer les
   # dependances des depots une fois pour toutes. Ne demarre jamais tout seul.
   outils:
-    image: agent-runner-lg
+    <<: *construction
     profiles: ["outils"]
     entrypoint: ["/bin/bash"]
     volumes:

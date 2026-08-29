@@ -216,3 +216,101 @@ async def test_une_branche_inconnue_n_est_pas_ecartee_par_le_filtre(atelier):
     # nommant une branche vide ; l'echec explicite viendra du worktree.
     rapport = await passer(atelier, [snapshot(head_ref="")])
     assert "hors des motifs" not in rapport.outcomes[0].decision.reason
+
+
+# ── Le perimetre par auteur ─────────────────────────────────────────────────
+#
+# Le reglage qui rend possible « un demon par developpeur ». Les baux vivent
+# dans une base LOCALE : deux demons sur deux machines n'ont aucune exclusion
+# mutuelle. Ce qui les empeche de se marcher dessus, ce n'est pas le bail, c'est
+# le fait que leurs ensembles de travail soient DISJOINTS.
+
+
+def _pr(numero: int, auteur: str) -> PullSnapshot:
+    return PullSnapshot(
+        number=numero, repo="backend", head_sha=f"sha{numero}",
+        head_ref=f"fix/{numero}-truc", author=auteur,
+        threads=(Thread(f"T{numero}", numero, "un-bot", False,
+                        "**![P1 Badge](x)** truc", "a.py", 1),),
+    )
+
+
+class LecteurFige:
+    def __init__(self, pulls):
+        self._pulls = pulls
+
+    async def open_pulls(self, repo):
+        return list(self._pulls)
+
+
+def _profil_avec(tmp_path, auteurs):
+    t = str(tmp_path).replace("\\", "/")
+    (tmp_path / "p.yaml").write_text(textwrap.dedent(f"""
+        project: essai
+        workspace: {t}
+        forge:
+          org: UneOrg
+        reviewers:
+          trust: [un-bot]
+        scope:
+          authors: {auteurs}
+        repos:
+          backend:
+            access: write
+            path: {t}
+    """), encoding="utf-8")
+    return load_profile(tmp_path / "p.yaml")
+
+
+async def test_hors_perimetre_la_PR_n_est_PAS_balayee(tmp_path):
+    profil = _profil_avec(tmp_path, ["moi"])
+    store = StateStore(tmp_path / "s.db")
+    try:
+        rapport = await sweep_profile(
+            profil, LecteurFige([_pr(1, "moi"), _pr(2, "quelqu-un-dautre")]),
+            Journal(tmp_path / "logs"), store)
+    finally:
+        store.close()
+    assert [o.number for o in rapport.outcomes] == [1]
+
+
+async def test_hors_perimetre_ne_compte_PAS_comme_rien_a_faire(tmp_path):
+    # Une PR qui n'appartient pas a ce demon ne doit pas figurer au bilan : l'y
+    # compter ferait croire qu'on s'en occupe et qu'il n'y a rien a y faire.
+    profil = _profil_avec(tmp_path, ["moi"])
+    store = StateStore(tmp_path / "s.db")
+    try:
+        rapport = await sweep_profile(
+            profil, LecteurFige([_pr(9, "quelqu-un-dautre")]),
+            Journal(tmp_path / "logs"), store)
+    finally:
+        store.close()
+    assert rapport.outcomes == ()
+    assert "aucune PR" in rapport.summary()
+
+
+async def test_un_perimetre_VIDE_prend_tout(tmp_path):
+    # Le cas du demon UNIQUE, partage par une equipe : une absence d'avis ne
+    # doit pas se lire comme une interdiction totale.
+    profil = _profil_avec(tmp_path, [])
+    store = StateStore(tmp_path / "s.db")
+    try:
+        rapport = await sweep_profile(
+            profil, LecteurFige([_pr(1, "moi"), _pr(2, "toi")]),
+            Journal(tmp_path / "logs"), store)
+    finally:
+        store.close()
+    assert sorted(o.number for o in rapport.outcomes) == [1, 2]
+
+
+async def test_la_casse_du_login_n_exclut_personne(tmp_path):
+    # Un perimetre qui ne reconnait personne est un demon qui ne fait rien, sans
+    # que rien ne dise pourquoi. C'est exactement la panne muette qu'on evite.
+    profil = _profil_avec(tmp_path, ["MOI"])
+    store = StateStore(tmp_path / "s.db")
+    try:
+        rapport = await sweep_profile(
+            profil, LecteurFige([_pr(1, "moi")]), Journal(tmp_path / "logs"), store)
+    finally:
+        store.close()
+    assert [o.number for o in rapport.outcomes] == [1]

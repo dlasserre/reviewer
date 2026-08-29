@@ -26,6 +26,19 @@ reviewers:
     - chatgpt-codex-connector
     - github-copilot
 
+# QUELLES PR ce demon prend en charge.
+#
+# Les baux vivent dans une base sqlite LOCALE : deux demons sur deux
+# machines n'ont AUCUNE exclusion mutuelle. Sans ce perimetre, ils
+# prendraient la meme PR, pousseraient sur la meme branche et
+# repondraient deux fois dans les memes fils.
+#
+# Vide = toutes les PR. C'est le bon reglage pour un demon UNIQUE,
+# partage par une equipe sous une identite de service.
+scope:
+  authors:
+    - moi
+
 human:
   notify: "@moi"
 
