@@ -455,7 +455,8 @@ def normalise_login(login: str) -> str:
     return l[:-5] if l.endswith("[bot]") else l
 
 
-def _fresh(threads: tuple[Thread, ...], trust: frozenset[str], cursor: int) -> tuple[Thread, ...]:
+def _fresh(threads: tuple[Thread, ...], trust: frozenset[str], cursor: int,
+           *, malgre_attente: bool = False) -> tuple[Thread, ...]:
     """Fils qui constituent du travail NON TRAITE.
 
     Quatre conditions, et chacune ecarte un piege reel :
@@ -464,7 +465,11 @@ def _fresh(threads: tuple[Thread, ...], trust: frozenset[str], cursor: int) -> t
         visible ;
       - `not awaiting_human` : l'agent a pose une question et personne n'a
         repondu. Ce fil n'est pas du travail, c'est une attente — le reprendre
-        reposerait la meme question a chaque passage ;
+        reposerait la meme question a chaque passage. SAUF si on a demande a
+        reprendre : c'est precisement le sens du geste, « arrete d'attendre ma
+        reponse et refais un tour ». Sans cette exception, un forcage retirait
+        le fil de l'attente sans le rendre au travail, et la PR tombait sur
+        « rien a faire » — donc « prete a merger », un fil ouvert au nez ;
       - un auteur de confiance a parle : l'allowlist vient du profil, JAMAIS de
         la charge utile. C'est ce qui empeche un commentaire arbitraire de faire
         travailler l'agent. La comparaison passe par `normalise_login`, sans quoi
@@ -483,7 +488,7 @@ def _fresh(threads: tuple[Thread, ...], trust: frozenset[str], cursor: int) -> t
     return tuple(
         t for t in threads
         if not t.resolved
-        and not t.awaiting_human
+        and (malgre_attente or not t.awaiting_human)
         and t.cursor_for(trust) > cursor
     )
 
@@ -522,7 +527,8 @@ def decide(
     checks = pr.relevant_checks(ignored_checks)
     failed = [c for c in checks if c.failed]
     pending = [c for c in checks if c.pending]
-    frais = _fresh(pr.threads, trust, pr.last_handled_comment_id)
+    frais = _fresh(pr.threads, trust, pr.last_handled_comment_id,
+                   malgre_attente=forced)
     # ── LE FORCAGE ─────────────────────────────────────────────────────────
     #
     # Deux verrous arretent une PR en attendant UNE PERSONNE : les cycles

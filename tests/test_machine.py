@@ -378,13 +378,30 @@ def test_une_branche_inconnue_ne_declenche_pas_le_garde():
 
 
 def _fil_en_attente(cid=91):
-    """Un fil dont le DERNIER message est une question de l'agent."""
-    from reviewer.rules.machine import AGENT_MARK, ASK_MARK
+    """Le fil de backend#746, tel que la forge le rend.
+
+    Trois details qui comptent, et qu'une fixture approximative perd :
+
+      - il OUVRE sur une remarque de Codex avec son badge, donc porteuse d'une
+        severite. Un fil sans badge n'est pas bloquant, et le test passerait a
+        cote du cas reel ;
+      - le DERNIER message est la question de l'agent, marquee — c'est ce qui
+        fait `awaiting_human` ;
+      - l'agent ecrit sous le jeton de Damien, donc sous un login DE CONFIANCE.
+        Avec un auteur hors `trust`, `cursor_for` rend 0 et le fil est ecarte
+        par le curseur avant meme qu'on parle d'attente : le test echouerait
+        pour la mauvaise raison.
+    """
+    from reviewer.rules.machine import AGENT_MARK, ASK_MARK, Comment
 
     return Thread(
-        id=f"PRRT_{cid}", comment_id=cid, author="agent", resolved=False,
-        body=AGENT_MARK + ASK_MARK + " Faut-il changer la signature publique ?",
-        path="app/service.py", line=88,
+        id=f"PRRT_{cid}", comment_id=1, author=CODEX, resolved=False,
+        body=BADGE_P1, path="app/features/auth/guest_repository.py", line=86,
+        comments=(
+            Comment(1, CODEX, BADGE_P1),
+            Comment(cid, "dlasserre",
+                    AGENT_MARK + ASK_MARK + " Correctif ecrit, mais NON VALIDE."),
+        ),
     )
 
 
@@ -399,14 +416,24 @@ def test_le_forcage_leve_les_CYCLES_EPUISES():
     assert Action.RUN_AGENT in d(p, forced=True).actions
 
 
-def test_le_forcage_leve_l_ATTENTE_DE_REPONSE():
-    # L'agent a pose une question, personne n'a repondu. Repondre dans le fil
-    # relance l'agent — mais la reponse est parfois « laisse tomber, refais un
-    # tour », et celle-la se donne plus vite depuis la console.
+def test_le_forcage_REND_LE_FIL_AU_TRAVAIL_pas_seulement_a_l_ecran():
+    # backend#746, 30/08 : le clic a fait passer la PR de « arbitrage requis » a
+    # « PRETE A MERGER », sans qu'aucun job ne tourne et sans que le fil soit
+    # resolu. `forced` retirait le fil de l'attente, mais `_fresh` continuait de
+    # l'ecarter du travail : plus d'attente, pas de travail — donc « rien a
+    # faire », donc mergeable, un fil ouvert au nez. Sur une PR de release.
+    #
+    # Le premier test de ce cas assertait `state is not NEEDS_HUMAN`. C'est vrai
+    # de READY_FOR_HUMAN aussi : il decrivait le decor, pas le comportement.
     p = pr(checks=(vert(),), threads=(_fil_en_attente(),), **FINI)
 
     assert d(p).state is State.NEEDS_HUMAN
-    assert d(p, forced=True).state is not State.NEEDS_HUMAN
+
+    force = d(p, forced=True)
+    assert force.state is State.NEEDS_FIX, (
+        "reprendre doit remettre l'agent au travail, jamais declarer mergeable")
+    assert Action.RUN_AGENT in force.actions
+    assert force.threads, "le fil repris doit etre celui qu'on donne a l'agent"
 
 
 def test_le_forcage_ne_leve_PAS_une_CI_ILLISIBLE():
