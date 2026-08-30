@@ -63,7 +63,8 @@ def _lease_json(lease) -> dict[str, Any]:
 
 def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                store: StateStore, journal: Journal,
-               *, sse_keepalive_s: float = 20.0, reveil=None) -> FastAPI:
+               *, sse_keepalive_s: float = 20.0, reveil=None,
+               tableau=None) -> FastAPI:
     app = FastAPI(title="claude-agent-runner", version="0.1.0",
                   description="Etat et flux d'evenements du demon local.")
 
@@ -99,6 +100,28 @@ def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         from reviewer.graph.build import topologie  # noqa: PLC0415
 
         return topologie()
+
+    @app.get("/pulls")
+    def pulls() -> dict[str, Any]:
+        """Les PR SUIVIES et ce que le demon a decide pour chacune.
+
+        ── POURQUOI CETTE ROUTE EXISTE ────────────────────────────────────
+
+        `/jobs` ne montre que le TRAVAIL. Une decision « rien a faire » n'en
+        produit aucun, et la console affichait alors « aucun cycle » — un demon
+        mort a l'ecran, alors qu'il tournait et avait quelque chose a dire.
+
+        « Rien a faire » et « rien vu » sont deux etats differents. C'est
+        exactement la distinction qu'une console doit porter.
+
+        Le journal ne permet pas de la reconstruire : le balayage n'y ecrit pas
+        les etats inertes, sans quoi un `IDLE` par PR a chaque passage noierait
+        les trois lignes qui comptent.
+        """
+        if tableau is None:
+            return {"pulls": [], "balaye_a": None,
+                    "raison": "ce demon n'execute aucun balayage (--no-work)"}
+        return {"pulls": tableau.pulls, "balaye_a": tableau.balaye_a}
 
     @app.post("/sweep")
     def sweep() -> dict[str, Any]:

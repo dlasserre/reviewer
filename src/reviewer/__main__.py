@@ -312,7 +312,8 @@ def _assurer_confiance(runner: RunnerConfig, nom: str, ecrivables: dict,
 
 
 async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
-               only: str | None, limit: int) -> int:
+               only: str | None, limit: int,
+               tableau: "Tableau | None" = None) -> int:
     """Balaye, puis fait tourner le graphe sur le travail identifie.
 
     La borne `limit` est volontairement BASSE par defaut. Un passage qui lance
@@ -325,6 +326,7 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
     journal = Journal(runner.logs_dir)
     _reprendre_les_baux(store, journal)
 
+    rapports = []
     lances = 0
     try:
         # UN SEUL checkpointer pour tout le passage. Il porte les points de
@@ -348,6 +350,7 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                         ignored_checks=compile_ignored(profile.ignored_checks)
                 ) as reader:
                     rapport = await sweep_profile(profile, reader, journal, store)
+                    rapports.append(rapport)
                     print(f"\n=== {nom} — {rapport.summary()}")
 
                     jeton = _token_ecriture(profile)
@@ -412,12 +415,54 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                             await writer.__aexit__(None, None, None)
     finally:
         store.close()
+        # Pose la photo MEME en cas d'echec partiel : une console qui n'affiche
+        # rien parce qu'un depot a echoue ferait croire que le demon ne voit
+        # aucune PR, alors qu'il en voit et qu'il l'a dit dans son bilan.
+        if tableau is not None:
+            tableau.poser(rapports)
 
     if not runner.writes_enabled:
         print("\nLecture seule (writes_enabled: false) : prompts construits, "
               "agent non lance.")
     print(f"\n{lances} job(s) traite(s).")
     return 0
+
+
+class Tableau:
+    """Ce que le DERNIER balayage a vu. En memoire, volontairement.
+
+    Ce n'est pas un etat a conserver : c'est une photo, vraie jusqu'au passage
+    suivant. La persister creerait une seconde verite a cote de la forge — et
+    une photo perimee qu'on croirait fraiche est pire qu'une absence.
+    """
+
+    def __init__(self) -> None:
+        self.pulls: list[dict] = []
+        self.balaye_a: str | None = None
+
+    def poser(self, rapports) -> None:
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        vu: list[dict] = []
+        for rapport in rapports:
+            for o in rapport.outcomes:
+                vu.append({
+                    "profile": rapport.profile,
+                    "repository": o.repo,
+                    "pull_request": o.number,
+                    "titre": o.snapshot.head_ref,
+                    "auteur": o.snapshot.author,
+                    "etat": o.decision.state.value,
+                    "raison": o.decision.reason,
+                    "cycle": o.snapshot.review_cycle,
+                    # Ce qui DEMANDE quelque chose : c'est ce qui distingue une
+                    # PR qu'on regarde d'une PR sur laquelle on va agir.
+                    "actions": [a.value for a in o.decision.actions],
+                    "fils": len(o.decision.threads),
+                })
+        vu.sort(key=lambda p: (p["repository"], p["pull_request"]))
+        self.pulls = vu
+        self.balaye_a = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class Reveil:
@@ -455,7 +500,8 @@ class Reveil:
 
 async def _boucle_de_travail(runner: RunnerConfig,
                              profils: dict[str, ProfileConfig],
-                             limit: int, reveil: "Reveil | None" = None) -> None:
+                             limit: int, reveil: "Reveil | None" = None,
+                             tableau: "Tableau | None" = None) -> None:
     """Balaye et traite, indefiniment, toutes les `reconcile_every`.
 
     Le modele DECLENCHE SUR NIVEAU rend cette boucle suffisante a elle seule :
@@ -472,7 +518,7 @@ async def _boucle_de_travail(runner: RunnerConfig,
         if reveil is not None:
             reveil.en_cours = True
         try:
-            await _run(runner, profils, None, limit)
+            await _run(runner, profils, None, limit, tableau)
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
@@ -508,7 +554,9 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
     _reprendre_les_baux(store, journal)
 
     reveil = Reveil() if travailler else None
-    app = create_app(runner, profils, store, journal, reveil=reveil)
+    tableau = Tableau()
+    app = create_app(runner, profils, store, journal, reveil=reveil,
+                     tableau=tableau)
     print(f"API locale : http://{runner.api.bind}:{runner.api.port}")
     print("  console : /   etat : /jobs   flux : /events   sante : /health")
     if travailler:
@@ -536,7 +584,7 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         taches = [asyncio.create_task(serveur.serve())]
         if travailler:
             taches.append(asyncio.create_task(
-                _boucle_de_travail(runner, profils, limit, reveil)))
+                _boucle_de_travail(runner, profils, limit, reveil, tableau)))
         try:
             await asyncio.gather(*taches)
         finally:

@@ -192,6 +192,19 @@ PAGE = """<!doctype html>
   .s-a_blanc    { color: var(--violet); }
   .s-interrompu { color: var(--pale); }
   .s-test       { color: var(--violet); }
+  /* Les etats d'une PR. Ils ne disent pas la meme chose qu'un statut de cycle :
+     ils disent ce qu'on ATTEND, et de qui. */
+  .s-NEEDS_FIX       { color: var(--neon); }
+  .s-AGENT_WORKING   { color: var(--neon); }
+  .s-WAITING_CI      { color: var(--cyan); }
+  .s-WAITING_REVIEW  { color: var(--cyan); }
+  .s-NEEDS_HUMAN     { color: var(--ambre); }
+  .s-READY_FOR_HUMAN { color: var(--violet); }
+  .s-IDLE            { color: var(--pale); }
+  .pourquoi {
+    grid-column: 1 / -1; color: var(--pale); font-size: 11.5px; line-height: 1.45;
+    margin-top: 2px;
+  }
   .cycle.vif .statut { animation: battement 1.7s ease-in-out infinite; }
   @keyframes battement { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 
@@ -341,13 +354,23 @@ PAGE = """<!doctype html>
 </header>
 
 <main>
-  <section class="panneau">
-    <div class="entete">
-      <h2>Cycles</h2>
-      <div class="droite"><span class="jauge" id="compte">0</span></div>
-    </div>
-    <div class="cycles" id="cycles"><div class="vide">Aucun cycle.</div></div>
-  </section>
+  <div class="colonne">
+    <section class="panneau" style="flex: 0 1 auto; max-height: 52%;">
+      <div class="entete">
+        <h2>PR suivies</h2>
+        <div class="droite"><span class="jauge" id="balaye">&mdash;</span></div>
+      </div>
+      <div class="cycles" id="pulls"><div class="vide">Pas encore balaye.</div></div>
+    </section>
+
+    <section class="panneau" style="flex: 1 1 auto;">
+      <div class="entete">
+        <h2>Cycles</h2>
+        <div class="droite"><span class="jauge" id="compte">0</span></div>
+      </div>
+      <div class="cycles" id="cycles"><div class="vide">Aucun cycle.</div></div>
+    </section>
+  </div>
 
   <div class="colonne">
     <section class="panneau" style="flex: 1 1 64%;">
@@ -803,6 +826,56 @@ async function charger(j) {
   peindre(); lister(); filer();
 }
 
+// ── Les PR suivies ──────────────────────────────────────────────────────────
+//
+// `/jobs` ne montre que le TRAVAIL. Une decision « rien a faire » n'en produit
+// aucun, et la console affichait alors « aucun cycle » — un demon mort a
+// l'ecran, alors qu'il tournait et avait quelque chose a dire.
+//
+// « Rien a faire » et « rien vu » sont deux etats differents.
+const ETATS = {
+  NEEDS_FIX: "a corriger", AGENT_WORKING: "en cours", WAITING_CI: "attend la CI",
+  WAITING_REVIEW: "attend la revue", NEEDS_HUMAN: "attend toi",
+  READY_FOR_HUMAN: "a merger", IDLE: "rien a faire",
+};
+
+async function chargerPulls() {
+  const d = await jget("/pulls");
+  const boite = $("#pulls");
+  const liste = d && d.pulls ? d.pulls : [];
+  $("#balaye").textContent = d && d.balaye_a ? quand(d.balaye_a) : "\u2014";
+  boite.textContent = "";
+  if (!liste.length) {
+    boite.innerHTML = `<div class="vide">${
+      d && d.raison ? d.raison
+        : (d && d.balaye_a ? "Aucune PR ouverte dans le perimetre."
+                           : "Pas encore balaye.")}</div>`;
+    return;
+  }
+  for (const p of liste) {
+    const b = document.createElement("button");
+    // Une PR qui ATTEND quelque chose de nous doit se distinguer d'une PR
+    // qu'on regarde passer : c'est la seule information qui appelle un geste.
+    const vif = p.etat === "AGENT_WORKING" || p.etat === "NEEDS_FIX";
+    b.className = "cycle" + (vif ? " vif" : "");
+    b.innerHTML =
+      `<div class="haut"><span class="depot">${p.repository}#${p.pull_request}</span>`
+      + `<span class="quand">${p.cycle ? "cycle " + p.cycle : ""}</span></div>`
+      + `<div class="bas"><span class="statut s-${p.etat}">`
+      + `${ETATS[p.etat] || p.etat}</span>`
+      + `<span class="etapes">${p.fils ? p.fils + " fil(s)" : ""}</span></div>`
+      + `<div class="pourquoi">${p.raison || ""}</div>`;
+    // Cliquer selectionne le dernier cycle de cette PR, s'il y en a un.
+    b.onclick = () => {
+      const j = visibles().find(
+        (x) => x.repo === p.repository && x.pr === p.pull_request);
+      if (j) { choisi = j.id; charger(j); }
+    };
+    boite.appendChild(b);
+  }
+}
+
+
 // ── Fil ─────────────────────────────────────────────────────────────────────
 
 const QUOI = {
@@ -1002,6 +1075,7 @@ async function demarrer() {
     $("#actifs").textContent = etat.active.length;
     for (const e of etat.recent) absorber(e, { historique: true });
   }
+  await chargerPulls();
 
   const flux = new EventSource("/events");
   flux.onopen = () => $("#pouls").classList.add("vif");
@@ -1012,6 +1086,8 @@ async function demarrer() {
     if (FINS[e.event] || e.event === "job.started") {
       jget("/jobs").then((s) => { if (s) $("#actifs").textContent = s.active.length; });
     }
+    // Un balayage vient de finir : ce qu'il a vu a change.
+    if (e.event === "sweep.done") chargerPulls();
   };
 }
 
