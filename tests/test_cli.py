@@ -382,6 +382,30 @@ def _runner_avec(tmp_path, *, reconcile_every: str):
     return load_runner(f)
 
 
+def double_de_run(fn):
+    """Refuse un double qui ne pourrait pas etre appele comme `_run`.
+
+    `_boucle_de_travail` passe ses arguments par POSITION. Un double en retard
+    d'un parametre ne fait donc pas echouer le test : il le fait TOURNER. La
+    boucle rattrape la `TypeError`, reessaie au tour suivant, retombe dessus —
+    indefiniment. La suite entiere s'arrete de finir, et rien ne dit pourquoi.
+
+    Compare les noms, pas seulement le nombre : un parametre insere au milieu
+    passerait un simple comptage tout en decalant les valeurs recues.
+    """
+    import inspect  # noqa: PLC0415
+
+    import reviewer.__main__ as m  # noqa: PLC0415
+
+    vraie = list(inspect.signature(m._run).parameters)
+    double = list(inspect.signature(fn).parameters)
+    assert double == vraie, (
+        f"double de `_run` en retard : il prend {double}, la vraie fonction "
+        f"prend {vraie}. Sans cette verification, la boucle tournerait sans fin."
+    )
+    return fn
+
+
 # ── `serve` travaille-t-il vraiment ? ───────────────────────────────────────
 # Il ne le faisait pas. Il exposait l'API et rien d'autre, en le disant a
 # l'ecran — mais un demon qu'on laisse tourner une nuit est cense travailler.
@@ -394,11 +418,9 @@ async def test_la_boucle_appelle_le_travail_a_chaque_tour(monkeypatch, tmp_path)
 
     passages = []
 
-    # La signature SUIT celle de `_run`, cinquieme argument compris : la
-    # boucle les passe par POSITION. Un double en retard ne fait pas
-    # echouer ce test, il le fait TOURNER — la boucle rattrape l'erreur et
-    # reessaie, une fois par seconde, indefiniment.
-    async def faux_run(runner, profils, only, limit, tableau=None):
+    @double_de_run
+    async def faux_run(runner, profils, only, limit, tableau=None,
+                       forcages=None):
         passages.append(limit)
         if len(passages) >= 3:
             raise asyncio.CancelledError
@@ -417,11 +439,9 @@ async def test_le_premier_passage_est_IMMEDIAT(monkeypatch, tmp_path):
 
     vu = []
 
-    # La signature SUIT celle de `_run`, cinquieme argument compris : la
-    # boucle les passe par POSITION. Un double en retard ne fait pas
-    # echouer ce test, il le fait TOURNER — la boucle rattrape l'erreur et
-    # reessaie, une fois par seconde, indefiniment.
-    async def faux_run(runner, profils, only, limit, tableau=None):
+    @double_de_run
+    async def faux_run(runner, profils, only, limit, tableau=None,
+                       forcages=None):
         vu.append(True)
         raise asyncio.CancelledError
 
@@ -440,11 +460,9 @@ async def test_une_erreur_n_arrete_PAS_la_boucle(monkeypatch, tmp_path, capsys):
 
     tours = []
 
-    # La signature SUIT celle de `_run`, cinquieme argument compris : la
-    # boucle les passe par POSITION. Un double en retard ne fait pas
-    # echouer ce test, il le fait TOURNER — la boucle rattrape l'erreur et
-    # reessaie, une fois par seconde, indefiniment.
-    async def faux_run(runner, profils, only, limit, tableau=None):
+    @double_de_run
+    async def faux_run(runner, profils, only, limit, tableau=None,
+                       forcages=None):
         tours.append(len(tours))
         if len(tours) == 1:
             raise RuntimeError("GitHub injoignable")

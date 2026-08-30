@@ -149,6 +149,41 @@ PAGE = """<!doctype html>
   @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
   .colonne { display: flex; flex-direction: column; gap: 14px; min-height: 0; min-width: 0; }
 
+  /* La rangee du bas : ce que le demon FAIT, et ce sur quoi il le fait. Lire
+     le fil sans la PR obligeait a ouvrir GitHub pour savoir de quelle remarque
+     on parlait — donc a quitter la console pour la comprendre. */
+  .rangee { display: flex; gap: 14px; min-height: 0; min-width: 0; }
+  .rangee > .panneau { flex: 1 1 50%; min-width: 0; }
+  @media (max-width: 1280px) { .rangee { flex-direction: column; } }
+
+  .pr { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px 12px;
+        display: flex; flex-direction: column; gap: 9px; }
+  .pr .ligne { display: flex; gap: 9px; align-items: baseline; }
+  .pr .cle { flex: 0 0 76px; color: var(--pale); font: 10px var(--mono);
+             text-transform: uppercase; letter-spacing: .11em; }
+  .pr .val { font: 12px var(--mono); color: var(--encre); word-break: break-word; }
+  .pr .bloc { font: 640 10px var(--sans); text-transform: uppercase; margin-top: 5px;
+              letter-spacing: .14em; color: var(--pale); }
+  .pr .item { border: 1px solid var(--trait); border-radius: 10px; padding: 8px 10px;
+              display: flex; flex-direction: column; gap: 5px; }
+  .pr .item.attente { border-color: var(--ambre); }
+  .pr .item.resolu { opacity: .48; }
+  .pr .ou { font: 10.5px var(--mono); color: var(--cyan); word-break: break-all; }
+  .pr .msg { font-size: 12px; color: var(--doux); white-space: pre-wrap; word-break: break-word; }
+  .pr .qui { color: var(--pale); font: 10px var(--mono); }
+  .pr .chk { display: flex; gap: 7px; align-items: center; font: 11px var(--mono); color: var(--doux); }
+  .pr .puce2 { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--pale); }
+  .pr .puce2.ok { background: var(--neon); }
+  .pr .puce2.ko { background: var(--rouge); }
+  .pr .lien { color: var(--cyan); text-decoration: none; border-bottom: 1px solid transparent; }
+  .pr .lien:hover { border-bottom-color: var(--cyan); }
+
+  /* La carte d'une PR n'est plus un <button> : elle CONTIENT un lien vers la
+     forge et un bouton de reprise, et un bouton dans un bouton n'existe pas. */
+  .cycle .lien { color: var(--encre); text-decoration: none; border-bottom: 1px solid transparent; }
+  .cycle .lien:hover { color: var(--cyan); border-bottom-color: var(--cyan); }
+  .cycle .reprendre { margin-left: auto; padding: 3px 8px; font-size: 9.5px; }
+
   .panneau {
     background: linear-gradient(180deg, rgba(14,26,33,.72), rgba(10,18,24,.88));
     border: 1px solid var(--trait); border-radius: 14px;
@@ -362,7 +397,7 @@ PAGE = """<!doctype html>
       <button id="b-vert" aria-pressed="false" title="Graphe vertical">&#8597; Vertical</button>
       <button id="b-hori" aria-pressed="false" title="Graphe horizontal">&#8596; Horizontal</button>
     </div>
-    <button id="b-balayer" title="Relire la forge maintenant, sans attendre l'intervalle">Balayer</button>
+    <button id="b-balayer" title="Relire la forge maintenant, sans attendre l'intervalle">Relancer</button>
     <button id="b-test" title="Simule un cycle dans le navigateur, sans toucher au demon">Test</button>
     <button id="b-journal">Journal</button>
     <button id="b-vider" title="Masque les cycles passes ; n'efface rien sur le disque">Vider</button>
@@ -389,7 +424,7 @@ PAGE = """<!doctype html>
   </div>
 
   <div class="colonne">
-    <section class="panneau" style="flex: 1 1 64%;">
+    <section class="panneau" style="flex: 1 1 60%;">
       <div class="entete">
         <h2>Le cycle</h2>
         <div class="droite"><span class="cible" id="cible">&mdash;</span></div>
@@ -411,13 +446,23 @@ PAGE = """<!doctype html>
       </div>
     </section>
 
-    <section class="panneau" style="flex: 1 1 36%;">
-      <div class="entete">
-        <h2>En direct</h2>
-        <div class="droite"><span class="jauge" id="raison">&mdash;</span></div>
-      </div>
-      <div class="fil" id="fil"><div class="vide">Rien encore.</div></div>
-    </section>
+    <div class="rangee" style="flex: 1 1 40%;">
+      <section class="panneau">
+        <div class="entete">
+          <h2>En direct</h2>
+          <div class="droite"><span class="jauge" id="raison">&mdash;</span></div>
+        </div>
+        <div class="fil" id="fil"><div class="vide">Rien encore.</div></div>
+      </section>
+
+      <section class="panneau">
+        <div class="entete">
+          <h2>La PR</h2>
+          <div class="droite"><span class="jauge" id="pr-cible">&mdash;</span></div>
+        </div>
+        <div class="pr" id="pr"><div class="vide">Choisir une PR a gauche.</div></div>
+      </section>
+    </div>
   </div>
 </main>
 
@@ -850,10 +895,106 @@ async function charger(j) {
 //
 // « Rien a faire » et « rien vu » sont deux etats differents.
 const ETATS = {
-  NEEDS_FIX: "a corriger", AGENT_WORKING: "en cours", WAITING_CI: "attend la CI",
-  WAITING_REVIEW: "attend la revue", NEEDS_HUMAN: "attend toi",
-  READY_FOR_HUMAN: "a merger", IDLE: "rien a faire",
+  NEEDS_FIX: "correction requise", AGENT_WORKING: "en cours",
+  WAITING_CI: "attente CI", WAITING_REVIEW: "attente revue",
+  NEEDS_HUMAN: "arbitrage requis", READY_FOR_HUMAN: "pr\u00eate \u00e0 merger",
+  IDLE: "aucune action",
 };
+
+// La derniere photo servie par /pulls, indexee par depot#numero : le panneau
+// de droite la relit sans redemander la forge.
+const PHOTOS = new Map();
+let prChoisie = null;
+
+// Le corps d'un fil vient de la FORGE : il est ecrit par des tiers. L'injecter
+// tel quel dans `innerHTML` donnerait a un commentaire de PR le droit
+// d'executer du script dans la console du demon — laquelle sait declencher un
+// balayage et reprendre une PR.
+function ech(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Reprendre une PR que le demon laisse de cote. Ne leve QUE les deux verrous
+// qui attendent une personne — cycles epuises, question sans reponse. Le bail,
+// les branches partagees, les verifications et le plafond du jour tiennent.
+async function reprendre(p, bouton) {
+  const texte = bouton.textContent;
+  bouton.disabled = true; bouton.textContent = "\u2026";
+  let mot = "?", genre = "sweep.echec", pourquoi = "";
+  try {
+    const r = await fetch("/forcer/" + encodeURIComponent(p.profile) + "/"
+      + encodeURIComponent(p.repository) + "/" + p.pull_request, {method: "POST"});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { mot = "refuse"; pourquoi = d.detail || String(r.status); }
+    else { mot = "repris"; pourquoi = d.raison || ""; genre = "sweep.demande"; }
+  } catch (e) { mot = "hors ligne"; pourquoi = String(e.message || e); }
+  journaliser({event: genre, ts: new Date().toISOString(), why: pourquoi});
+  bouton.textContent = mot;
+  setTimeout(() => { bouton.textContent = texte; bouton.disabled = false; }, 2600);
+}
+
+// Le detail de la PR choisie. Tout vient de la photo deja servie par /pulls :
+// l'afficher ne coute pas un appel de plus a la forge.
+function montrerPR(p) {
+  const boite = $("#pr"), cible = $("#pr-cible");
+  if (!p) {
+    cible.textContent = "\u2014";
+    boite.innerHTML = `<div class="vide">Choisir une PR a gauche.</div>`;
+    return;
+  }
+  const cle = p.repository + "#" + p.pull_request;
+  cible.textContent = cle;
+  const nom = p.url
+    ? `<a class="lien" href="${ech(p.url)}" target="_blank" rel="noopener">${ech(cle)}</a>`
+    : ech(cle);
+  const L = [];
+  L.push(`<div class="ligne"><span class="cle">PR</span><span class="val">${nom}`
+    + (p.brouillon ? ` <span class="qui">(brouillon)</span>` : "") + `</span></div>`);
+  L.push(`<div class="ligne"><span class="cle">Branche</span><span class="val">`
+    + `${ech(p.titre || "\u2014")}${p.base ? " \u2192 " + ech(p.base) : ""}</span></div>`);
+  L.push(`<div class="ligne"><span class="cle">Auteur</span><span class="val">`
+    + `${ech(p.auteur || "\u2014")}</span></div>`);
+  L.push(`<div class="ligne"><span class="cle">Etat</span><span class="val">`
+    + `${ech(ETATS[p.etat] || p.etat)}${p.cycle ? " \u00b7 cycle " + p.cycle : ""}</span></div>`);
+  L.push(`<div class="ligne"><span class="cle">Decision</span><span class="val">`
+    + `${ech(p.raison || "")}</span></div>`);
+
+  const checks = p.checks || [];
+  L.push(`<div class="bloc">V\u00e9rifications (${checks.length})</div>`);
+  if (p.checks_lisibles === false) {
+    L.push(`<div class="msg">Illisibles : droits du jeton, ou API indisponible. `
+      + `Le demon ne peut pas distinguer une CI verte d'une CI qu'il ne voit pas.</div>`);
+  } else if (!checks.length) {
+    L.push(`<div class="msg">Aucune.</div>`);
+  } else {
+    for (const c of checks) {
+      const bon = c.verdict === "success";
+      const ko = c.verdict === "failure" || c.verdict === "timed_out"
+        || c.verdict === "cancelled";
+      L.push(`<div class="chk"><i class="puce2 ${bon ? "ok" : (ko ? "ko" : "")}"></i>`
+        + `${ech(c.nom)} <span class="qui">${ech(c.verdict || c.etat || "")}</span></div>`);
+    }
+  }
+
+  const fils = p.fils_detail || [];
+  L.push(`<div class="bloc">Fils de revue (${fils.length})</div>`);
+  if (!fils.length) L.push(`<div class="msg">Aucun.</div>`);
+  for (const f of fils) {
+    const cls = "item" + (f.attente ? " attente" : "") + (f.resolu ? " resolu" : "");
+    const ou = f.fichier
+      ? ech(f.fichier) + (f.ligne ? ":" + f.ligne : "")
+      : "sans ancrage de fichier";
+    const etiq = f.attente ? ` <span class="qui">\u00b7 attend une r\u00e9ponse</span>`
+      : (f.resolu ? ` <span class="qui">\u00b7 r\u00e9solu</span>` : "");
+    const msgs = (f.messages || []).map(
+      (m) => `<div class="msg"><span class="qui">${ech(m.auteur)}</span> `
+        + `${ech(m.corps)}</div>`).join("");
+    L.push(`<div class="${cls}"><div class="ou">${ou}${etiq}</div>${msgs}</div>`);
+  }
+  boite.innerHTML = L.join("");
+}
 
 async function chargerPulls() {
   const d = await jget("/pulls");
@@ -861,34 +1002,67 @@ async function chargerPulls() {
   const liste = d && d.pulls ? d.pulls : [];
   $("#balaye").textContent = d && d.balaye_a ? quand(d.balaye_a) : "\u2014";
   boite.textContent = "";
+  PHOTOS.clear();
   if (!liste.length) {
-    boite.innerHTML = `<div class="vide">${
+    boite.innerHTML = `<div class="vide">${ech(
       d && d.raison ? d.raison
         : (d && d.balaye_a ? "Aucune PR ouverte dans le perimetre."
-                           : "Pas encore balaye.")}</div>`;
+                           : "Pas encore balaye."))}</div>`;
+    montrerPR(null);
     return;
   }
   for (const p of liste) {
-    const b = document.createElement("button");
+    const cle = p.repository + "#" + p.pull_request;
+    PHOTOS.set(cle, p);
+    // Une carte n'est plus un <button> : elle porte un lien vers la forge et,
+    // quand la PR est bloquee, un bouton de reprise. Un bouton dans un bouton
+    // n'est pas du HTML valide.
+    const b = document.createElement("div");
+    b.setAttribute("role", "button");
+    b.tabIndex = 0;
     // Une PR qui ATTEND quelque chose de nous doit se distinguer d'une PR
     // qu'on regarde passer : c'est la seule information qui appelle un geste.
     const vif = p.etat === "AGENT_WORKING" || p.etat === "NEEDS_FIX";
     b.className = "cycle" + (vif ? " vif" : "");
+    const nom = p.url
+      ? `<a class="lien" href="${ech(p.url)}" target="_blank" rel="noopener" `
+        + `title="Ouvrir sur la forge">${ech(cle)}</a>`
+      : ech(cle);
+    // Le bouton n'apparait QUE la ou il fait quelque chose. Le forcage ne leve
+    // que les verrous qui attendent une personne ; ailleurs il donnerait
+    // l'illusion d'un geste sans effet.
+    const reprise = p.etat === "NEEDS_HUMAN"
+      ? `<button class="reprendre" title="Passe outre l'attente d'arbitrage `
+        + `et les cycles epuises. Ne touche ni au bail, ni aux verifications, `
+        + `ni au plafond du jour.">Reprendre</button>`
+      : "";
     b.innerHTML =
-      `<div class="haut"><span class="depot">${p.repository}#${p.pull_request}</span>`
+      `<div class="haut"><span class="depot">${nom}</span>`
       + `<span class="quand">${p.cycle ? "cycle " + p.cycle : ""}</span></div>`
-      + `<div class="bas"><span class="statut s-${p.etat}">`
-      + `${ETATS[p.etat] || p.etat}</span>`
-      + `<span class="etapes">${p.fils ? p.fils + " fil(s)" : ""}</span></div>`
-      + `<div class="pourquoi">${p.raison || ""}</div>`;
-    // Cliquer selectionne le dernier cycle de cette PR, s'il y en a un.
-    b.onclick = () => {
+      + `<div class="bas"><span class="statut s-${ech(p.etat)}">`
+      + `${ech(ETATS[p.etat] || p.etat)}</span>`
+      + `<span class="etapes">${p.fils ? p.fils + " fil(s)" : ""}</span>`
+      + reprise + `</div>`
+      + `<div class="pourquoi">${ech(p.raison || "")}</div>`;
+    b.onclick = (ev) => {
+      // Le lien et le bouton passent d'abord : cliquer « Reprendre » ne doit
+      // pas aussi changer la selection sous les doigts.
+      if (ev.target.closest("a, button")) return;
+      prChoisie = cle;
+      montrerPR(p);
       const j = visibles().find(
         (x) => x.repo === p.repository && x.pr === p.pull_request);
       if (j) { choisi = j.id; charger(j); }
     };
+    const rb = b.querySelector(".reprendre");
+    if (rb) rb.onclick = (ev) => { ev.stopPropagation(); reprendre(p, rb); };
     boite.appendChild(b);
   }
+  // La photo a change sous nos yeux : garder celle qu'on regardait si elle est
+  // toujours la, sinon montrer la premiere plutot qu'un panneau vide.
+  const vue = prChoisie ? PHOTOS.get(prChoisie) : null;
+  montrerPR(vue || liste[0]);
+  if (!vue) prChoisie = liste[0].repository + "#" + liste[0].pull_request;
 }
 
 
@@ -1096,7 +1270,7 @@ async function demarrer() {
   const sante = await jget("/health");
   if (sante) {
     const a = $("#armement");
-    a.textContent = sante.writes_enabled ? "arme" : "lecture seule";
+    a.textContent = sante.writes_enabled ? "mode \u00e9criture" : "lecture seule";
     a.className = "jauge" + (sante.writes_enabled ? " arme" : "");
     $("#parallele").textContent = sante.max_parallel;
   }

@@ -176,6 +176,7 @@ async def sweep_profile(
     journal: Journal,
     store: StateStore,
     *,
+    forces: "set[tuple[str, int]] | None" = None,
     now: datetime | None = None,
 ) -> SweepReport:
     """Un passage complet sur un profil.
@@ -254,6 +255,10 @@ async def sweep_profile(
                 review_window_s=profile.reviewers.nudge_after,
                 nudge_enabled=bool(profile.reviewers.nudge_comment),
                 ignored_checks=ignores,
+                # Un forcage demande depuis la console. `sweep_profile` ne le
+                # CONSOMME pas : c'est l'appelant qui tient le registre, et lui
+                # seul sait si le job a vraiment demarre.
+                forced=(nom, pull.number) in (forces or set()),
                 now=now,
             )
             outcomes.append(Outcome(nom, pull.number, d, pull))

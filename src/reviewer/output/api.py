@@ -64,7 +64,7 @@ def _lease_json(lease) -> dict[str, Any]:
 def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                store: StateStore, journal: Journal,
                *, sse_keepalive_s: float = 20.0, reveil=None,
-               tableau=None) -> FastAPI:
+               tableau=None, forcages=None) -> FastAPI:
     app = FastAPI(title="claude-agent-runner", version="0.1.0",
                   description="Etat et flux d'evenements du demon local.")
 
@@ -151,6 +151,69 @@ def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                        if runner.writes_enabled
                        else "lecture seule : prompts construits, aucun agent"),
         }
+
+    @app.post("/forcer/{profil}/{depot}/{pr}")
+    def forcer(profil: str, depot: str, pr: int) -> dict[str, Any]:
+        """« Vas-y quand meme » sur une PR que le demon laisse de cote.
+
+        ── CE QU'ELLE LEVE, ET CE QU'ELLE NE LEVE PAS ──────────────────────
+
+        Deux verrous arretent une PR en attendant une PERSONNE : les cycles
+        epuises, et une question posee sans reponse. Aucun des deux n'a de
+        sortie automatique — c'est voulu. Cette route est cette sortie.
+
+        Elle ne touche a rien d'autre. Le bail reste (deux agents sur une PR
+        restent exclus), les branches partagees restent interdites, les
+        verifications avant commit restent obligatoires, et le plafond de jobs
+        du jour tient — celui-la borne le COUT, il s'eleve dans le profil, pas
+        en cliquant.
+
+        ── POURQUOI ELLE EST LEGITIME ICI ──────────────────────────────────
+
+        Comme `/sweep`, elle ne dit pas ce que le demon a le DROIT de faire :
+        elle dit sur quoi il travaille maintenant. La difference avec un
+        commentaire sur la forge est le declencheur — non plus un texte lu
+        quelque part, mais une personne devant sa console.
+
+        ── L'AVERTISSEMENT EST DIT, PAS TU ─────────────────────────────────
+
+        Forcer une PR dont la CI est rouge produit un correctif qu'on ne sait
+        pas valider. C'est autorise — c'est un forcage — et la reponse le dit,
+        pour que la console puisse le repeter.
+        """
+        if forcages is None or reveil is None:
+            raise HTTPException(409, "ce demon n'execute aucun job (--no-work) : "
+                                     "forcer une PR n'y aurait aucun effet")
+        if profil not in profils:
+            raise HTTPException(404, f"profil inconnu : {profil}")
+        if depot not in profils[profil].repos:
+            raise HTTPException(404, f"depot inconnu dans {profil} : {depot}")
+
+        forcages.demander(profil, depot, pr)
+        lance = reveil.demander()
+        return {
+            "force": True,
+            "cible": f"{depot}#{pr}",
+            "balayage": lance,
+            "arme": runner.writes_enabled,
+            "raison": (
+                f"{depot}#{pr} sera repris au prochain passage"
+                + (", declenche maintenant." if lance
+                   else " (un passage est deja en cours).")
+                + ("" if runner.writes_enabled
+                   else " Lecture seule : le prompt sera construit, "
+                        "aucun agent ne demarrera.")
+            ),
+        }
+
+    @app.get("/forcages")
+    def forcages_en_attente() -> dict[str, Any]:
+        """Ce qui est force et pas encore consomme.
+
+        Sans cette route, un clic resterait sans trace jusqu'au passage
+        suivant : impossible de distinguer « pris en compte » de « perdu ».
+        """
+        return {"forcages": forcages.liste() if forcages else []}
 
     @app.get("/history")
     def history(jours: int = 3, limite: int = 120) -> dict[str, Any]:

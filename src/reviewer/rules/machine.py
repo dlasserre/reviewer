@@ -496,6 +496,7 @@ def decide(
     review_window_s: float = 600.0,
     nudge_enabled: bool = True,
     ignored_checks: re.Pattern[str] | None = None,
+    forced: bool = False,
     now: datetime | None = None,
 ) -> Decision:
     """Que faut-il faire de cette PR, maintenant ?
@@ -522,12 +523,28 @@ def decide(
     failed = [c for c in checks if c.failed]
     pending = [c for c in checks if c.pending]
     frais = _fresh(pr.threads, trust, pr.last_handled_comment_id)
-    cycles_epuises = pr.review_cycle >= max_review_cycles
+    # ── LE FORCAGE ─────────────────────────────────────────────────────────
+    #
+    # Deux verrous arretent une PR en attendant UNE PERSONNE : les cycles
+    # epuises (« la boucle ne converge pas »), et une question posee sans
+    # reponse. Les deux sont justes — et les deux n'ont aucune sortie autre
+    # qu'un humain. Quand cette personne dit « vas-y quand meme », il faut que
+    # ce soit possible sans editer un YAML ni une base.
+    #
+    # Un forcage leve CES DEUX-LA, et rien d'autre. Il ne touche pas au bail
+    # (deux agents sur une PR restent exclus), ni aux branches partagees, ni
+    # aux verifications avant commit, ni au plafond de jobs du jour — celui-la
+    # borne le cout, il s'eleve dans le profil, pas en cliquant.
+    #
+    # Il est legitime parce que le declencheur n'est plus un commentaire lu sur
+    # la forge, mais une personne devant sa console.
+    cycles_epuises = pr.review_cycle >= max_review_cycles and not forced
     # Fils ou l'agent a pose une question et attend. Ils ne sont PAS du travail
     # (cf. `_fresh`), mais ils ne sont pas rien non plus : sans eux, une PR
     # entierement suspendue a un arbitrage se lirait « prete pour l'humain »,
     # c'est-a-dire prete a merger.
-    attente = tuple(t for t in pr.threads if not t.resolved and t.awaiting_human)
+    attente = (() if forced else
+               tuple(t for t in pr.threads if not t.resolved and t.awaiting_human))
 
     # ── La CI n'a pas pu etre lue : on s'arrete, on ne devine pas ──────────
     # Place AVANT toute lecture de `failed` / `pending`, qui seraient vides et
