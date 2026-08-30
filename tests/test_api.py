@@ -263,12 +263,12 @@ def app_forcable(tmp_path):
     app = create_app(runner, {"demo": profil}, store, journal,
                      sse_keepalive_s=0.2, reveil=reveil, forcages=forcages)
     with TestClient(app) as client:
-        yield client, forcages, reveil
+        yield client, forcages, reveil, store
     store.close()
 
 
 def test_forcer_inscrit_la_PR_et_demande_un_balayage(app_forcable):
-    client, forcages, reveil = app_forcable
+    client, forcages, reveil, _ = app_forcable
 
     r = client.post("/forcer/demo/api/714")
 
@@ -282,7 +282,7 @@ def test_forcer_inscrit_la_PR_et_demande_un_balayage(app_forcable):
 
 
 def test_forcer_une_cible_INCONNUE_est_refuse_sans_rien_inscrire(app_forcable):
-    client, forcages, _ = app_forcable
+    client, forcages, _, _ = app_forcable
 
     assert client.post("/forcer/demo/inexistant/714").status_code == 404
     assert client.post("/forcer/inconnu/api/714").status_code == 404
@@ -299,3 +299,39 @@ def test_sans_travail_forcer_est_REFUSE_plutot_que_muet(app_ctx):
     r = client.post("/forcer/demo/api/714")
     assert r.status_code == 409
     assert "no-work" in r.json()["detail"]
+
+
+
+def test_forcer_pendant_qu_un_job_tient_la_PR_est_REFUSE(app_forcable):
+    """Le bail fait autorite, pas la page.
+
+    Deux agents ne pourraient de toute facon pas demarrer — le bail les exclut.
+    Mais le forcage, lui, SURVIVRAIT au job en cours et relancerait un cycle
+    PAYANT pour refaire ce qui vient d'etre fait. Et pendant un job la carte
+    affiche encore la photo du balayage PRECEDENT : sans ce refus, l'interface
+    invite a un geste que l'etat reel rend absurde.
+    """
+    from datetime import timedelta
+
+    client, forcages, _, store = app_forcable
+    store.acquire("demo", "api", 714, "un-job-en-cours", ttl=timedelta(minutes=30))
+
+    r = client.post("/forcer/demo/api/714")
+
+    assert r.status_code == 409
+    assert "travaille deja" in r.json()["detail"]
+    # Rien d'inscrit : un forcage retenu ici repartirait apres le job et
+    # paierait un cycle pour refaire le meme travail.
+    assert forcages.liste() == []
+
+
+def test_un_bail_PERIME_ne_bloque_pas_la_reprise(app_forcable):
+    # Un job tue net laisse son bail derriere lui. Refuser dessus rendrait la
+    # PR definitivement irreprenable — le contraire du but.
+    from datetime import timedelta
+
+    client, forcages, _, store = app_forcable
+    store.acquire("demo", "api", 714, "un-job-mort", ttl=timedelta(seconds=-1))
+
+    assert client.post("/forcer/demo/api/714").status_code == 200
+    assert forcages.pour("demo") == {("api", 714)}
