@@ -102,6 +102,25 @@ _GH_INTERDIT = {
     ("auth", "logout"): "casserait l'authentification du runner",
 }
 
+# Commandes qui reparent l'ENVIRONNEMENT plutot que le code.
+#
+# Un agent qui lance `pip install`, `npm ci` ou `uv sync` transforme un probleme
+# de preparation du job en modification implicite de la machine. C'est le
+# runner, l'image Docker ou l'installation du depot qui doivent fournir les
+# outils ; si quelque chose manque, l'agent doit s'arreter et le rapporter.
+_INSTALLATIONS = {
+    "pip": {"install", "uninstall"},
+    "pip3": {"install", "uninstall"},
+    "pipx": {"install", "uninstall"},
+    "npm": {"ci", "i", "install", "uninstall", "update"},
+    "pnpm": {"add", "i", "install", "remove", "sync", "update", "up"},
+    "yarn": {"add", "install", "remove", "upgrade"},
+    "bun": {"add", "install", "remove", "update"},
+    "poetry": {"add", "install", "remove", "update"},
+    "cargo": {"install"},
+    "go": {"get", "install"},
+}
+
 # Methodes HTTP d'ecriture pour `gh api`.
 _METHODES_ECRITURE = {"POST", "PUT", "PATCH", "DELETE"}
 
@@ -232,6 +251,60 @@ def _premier_non_drapeau(args: list[str], depuis: int = 0) -> str | None:
     return None
 
 
+def _nom_exe(brut: str) -> str:
+    """Nom comparable d'un executable, sans chemin ni extension."""
+    exe = PurePath(brut.strip('"').replace("\\", "/")).name.lower()
+    return exe.removesuffix(".exe").removesuffix(".cmd")
+
+
+def _python(exe: str) -> bool:
+    return exe == "py" or bool(re.fullmatch(r"python(?:\d+(?:\.\d+)?)?", exe))
+
+
+def _normaliser_args(args: list[str]) -> str:
+    """Forme stable pour comparer une commande de l'agent a un check du runner."""
+    if not args:
+        return ""
+    exe = _nom_exe(args[0])
+    if _python(exe):
+        exe = "python"
+    return " ".join([exe, *(a.lower() for a in args[1:])])
+
+
+def _normaliser_commande(commande: str) -> str:
+    morceaux = _sous_commandes(commande)
+    return _normaliser_args(morceaux[0]) if len(morceaux) == 1 else ""
+
+
+def _installation_dependances(exe: str, args: list[str]) -> str | None:
+    """Cette sous-commande installe-t-elle ou retire-t-elle des dependances ?"""
+    if _python(exe):
+        for i, a in enumerate(args[1:], 1):
+            if a != "-m" or i + 1 >= len(args):
+                continue
+            module = _nom_exe(args[i + 1])
+            if module in ("pip", "pip3"):
+                sous = (_premier_non_drapeau(args, i + 2) or "").lower()
+                if sous in _INSTALLATIONS["pip"]:
+                    return "`python -m pip`"
+            if module == "ensurepip":
+                return "`python -m ensurepip`"
+            return None
+
+    sous = (_premier_non_drapeau(args, 1) or "").lower()
+    if sous in _INSTALLATIONS.get(exe, set()):
+        return f"`{exe} {sous}`"
+    if exe == "uv":
+        if sous in {"add", "remove", "sync"}:
+            return f"`uv {sous}`"
+        if sous == "pip":
+            i = args.index(_premier_non_drapeau(args, 1))
+            suivant = (_premier_non_drapeau(args, i + 1) or "").lower()
+            if suivant in _INSTALLATIONS["pip"]:
+                return f"`uv pip {suivant}`"
+    return None
+
+
 class Guard:
     """Juge un appel d'outil. Ne fait AUCUN effet de bord.
 
@@ -247,11 +320,15 @@ class Guard:
         readonly_roots: tuple[Path, ...] | list[Path] = (),
         protected_globs: tuple[str, ...] = PROTECTED_GLOBS,
         protected_refs: frozenset[str] | set[str] = BRANCHES_PARTAGEES,
+        runner_checks: tuple[str, ...] | list[str] = (),
     ) -> None:
         self.writable_root = Path(writable_root).resolve()
         self.readonly_roots = tuple(Path(p).resolve() for p in readonly_roots)
         self.protected_globs = tuple(protected_globs)
         self.protected_refs = frozenset(protected_refs)
+        self.runner_checks = frozenset(
+            c for c in (_normaliser_commande(cmd) for cmd in runner_checks) if c
+        )
 
     # ── Chemins ────────────────────────────────────────────────────────────
 
@@ -357,8 +434,22 @@ class Guard:
                     "commande non analysable (guillemet non ferme) : refusee par "
                     "principe — ce qu'on ne sait pas lire, on ne sait pas juger."
                 )
-            exe = PurePath(args[0].strip('"').replace("\\", "/")).name.lower()
-            exe = exe.removesuffix(".exe").removesuffix(".cmd")
+            exe = _nom_exe(args[0])
+
+            if self.runner_checks and _normaliser_args(args) in self.runner_checks:
+                return deny(
+                    f"`{' '.join(args)}` est une verification officielle du "
+                    "profil : rends ton verdict. Le runner la lancera apres, "
+                    "avant tout commit, push ou reponse."
+                )
+
+            if installation := _installation_dependances(exe, args):
+                return deny(
+                    f"{installation} est refuse : l'agent ne repare pas "
+                    "l'environnement du job. Si un outil manque, s'arreter et "
+                    "le rapporter ; les dependances se preparent avant le "
+                    "lancement."
+                )
 
             if exe == "git":
                 if (v := self._check_git(args)).denied:

@@ -119,8 +119,13 @@ _GESTES = """\
    sont charges : ce sont eux qui font foi sur le style, l'architecture et les
    frontieres, pas tes habitudes.
 3. CORRIGER ce qui doit l'etre, sur cette branche, dans ce worktree.
-4. VERIFIER ton correctif en lancant les tests du depot avant de conclure.
-5. RENDRE un verdict par fil, dans la sortie structuree demandee.
+4. CONTROLER au plus court si cela aide a coder : un test cible, une commande de
+   lecture ou un diagnostic ponctuel. Ne lance pas les suites completes du
+   depot et n'installe pas d'outils ou de dependances : l'environnement se
+   prepare avant le job.
+5. RENDRE le verdict des que le correctif est coherent. Les verifications
+   officielles du profil seront lancees par le runner APRES ton verdict, avant
+   tout commit, push ou reponse sur la forge.
 
 ## Ce que tu ne fais PAS toi-meme
 

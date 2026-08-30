@@ -359,6 +359,7 @@ async def code(state: JobState, deps: Deps) -> dict:
         writable_root=wt.path,
         readonly_roots=tuple(r.path for r in p.repos.values()
                              if r.path != repo_path and r.path.exists()),
+        runner_checks=tuple(p.repos[state["repo"]].checks),
     )
 
     severite = severite_dominante(decision.threads)
