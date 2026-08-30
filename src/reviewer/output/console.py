@@ -904,6 +904,8 @@ const ETATS = {
 // La derniere photo servie par /pulls, indexee par depot#numero : le panneau
 // de droite la relit sans redemander la forge.
 const PHOTOS = new Map();
+// Les PR qu'un job tient EN CE MOMENT, d'apres les baux — le seul etat reel.
+const ACTIFS = new Set();
 let prChoisie = null;
 
 // Le corps d'un fil vient de la FORGE : il est ecrit par des tiers. L'injecter
@@ -1031,7 +1033,13 @@ async function chargerPulls() {
     // Le bouton n'apparait QUE la ou il fait quelque chose. Le forcage ne leve
     // que les verrous qui attendent une personne ; ailleurs il donnerait
     // l'illusion d'un geste sans effet.
-    const reprise = p.etat === "NEEDS_HUMAN"
+    // Pas de bouton pendant qu'un job tient la PR. La carte montre la photo
+    // du balayage PRECEDENT — pendant un job elle affiche encore « arbitrage
+    // requis » — donc sans ce test l'interface invite a un geste que l'etat
+    // reel rend absurde. Le serveur refuse aussi : une page ouverte depuis dix
+    // minutes ne sait rien du bail.
+    const occupe = ACTIFS.has(cle);
+    const reprise = (p.etat === "NEEDS_HUMAN" && !occupe)
       ? `<button class="reprendre" title="Passe outre l'attente d'arbitrage `
         + `et les cycles epuises. Ne touche ni au bail, ni aux verifications, `
         + `ni au plafond du jour.">Reprendre</button>`
@@ -1294,6 +1302,8 @@ async function demarrer() {
   const etat = await jget("/jobs");
   if (etat) {
     $("#actifs").textContent = etat.active.length;
+    ACTIFS.clear();
+    for (const b of etat.active) ACTIFS.add(b.repository + "#" + b.pull_request);
     for (const e of etat.recent) absorber(e, { historique: true });
   }
   await chargerPulls();

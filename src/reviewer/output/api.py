@@ -189,6 +189,19 @@ def create_app(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         if depot not in profils[profil].repos:
             raise HTTPException(404, f"depot inconnu dans {profil} : {depot}")
 
+        # Le bail fait AUTORITE. Le bouton vient d'une page qui peut dater de
+        # dix minutes : elle affiche la photo du dernier balayage, pas l'etat
+        # present. Deux agents ne pourraient de toute facon pas demarrer — le
+        # bail les exclut — mais le forcage, lui, SURVIVRAIT au job en cours et
+        # relancerait un cycle paye pour refaire le meme travail.
+        bail = store.lease(profil, depot, pr)
+        if bail is not None and not store.reclaimable(bail):
+            raise HTTPException(
+                409, f"un job travaille deja {depot}#{pr} (depuis "
+                     f"{int((datetime.now(timezone.utc) - bail.acquired_at).total_seconds())} s). "
+                     "Reprendre maintenant relancerait un cycle pour refaire le "
+                     "meme travail : attendre qu'il conclue.")
+
         forcages.demander(profil, depot, pr)
         lance = reveil.demander()
         return {
