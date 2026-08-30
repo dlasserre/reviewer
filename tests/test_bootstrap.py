@@ -251,3 +251,25 @@ def test_le_clone_d_installation_ramene_les_branches_AUTRES_que_la_defaut(tmp_pa
     assert "origin/dev" in distantes, (
         "clone mono-branche : le demon ne verra jamais la tete d'une PR"
     )
+
+
+# ── La borne de tours ───────────────────────────────────────────────────────
+#
+# `max_turns: 60` a coupe DEUX jobs reels dont le travail etait termine :
+# backend#727 le 27/08, backend#743 le 30/08. Entre les deux, la mesure a ete
+# consignee dans `profils/plantifia.yaml` — le profil de REFERENCE, que le
+# generateur ne lit pas. Le profil d'installation de Damien, ecrit par cette
+# fonction meme, heritait donc du defaut rejete par la mesure.
+
+
+def test_le_profil_ecrit_PORTE_la_borne_de_tours(tmp_path):
+    _, chemin = _ecrire(tmp_path)
+
+    # Ecrite NOIR SUR BLANC, pas heritee : c'est le silence de l'heritage qui
+    # a fait perdre la lecon. Un reglage qu'on ne voit pas dans son fichier ne
+    # se relit pas le jour ou un job meurt dessus.
+    assert "max_turns:" in chemin.read_text(encoding="utf-8"), \
+        "la borne doit etre VISIBLE dans le profil, pas silencieusement heritee"
+
+    assert load_profile(chemin).max_turns >= 120, \
+        "60 tours ont coupe deux jobs reels dont le correctif etait ecrit"

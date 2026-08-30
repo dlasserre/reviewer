@@ -496,3 +496,24 @@ def test_une_variable_VIDE_ne_reecrit_rien(tmp_path, monkeypatch):
     monkeypatch.setenv("REVIEWER_WORKSPACE", "   ")
     p = load_profile(_profil_workspace(tmp_path))
     assert p.repos["backend"].path.as_posix().endswith("postes/moi/code/backend")
+
+
+def test_un_profil_MUET_sur_les_tours_recoit_une_borne_mesuree(tmp_path):
+    """Le defaut est ce que recoivent les profils deja installes.
+
+    C'est le vrai chemin de la panne du 30/08 : le profil en production ne
+    disait rien sur `max_turns`, donc il prenait le defaut du code — 60, la
+    valeur que deux mesures avaient deja rejetee. Corriger le generateur seul
+    n'aurait rien change pour lui : il etait deja ecrit.
+
+    La borne est un PLAFOND, pas une cible. Un job qui aboutit en 40 tours
+    coute 40 tours, quel que soit le plafond ; un job coupe au plafond coute
+    tout ce qu'il a depense, PLUS une escalade humaine, PLUS un nouveau cycle.
+    Un plafond trop bas est donc plus cher qu'un plafond large.
+    """
+    p = load_profile(ecrire(tmp_path, "p.yaml", PROFIL_MINIMAL))
+
+    assert p.max_turns >= 120, (
+        "un profil silencieux herite du defaut : il ne doit pas heriter d'une "
+        "valeur que la mesure a rejetee (backend#727 le 27/08, #743 le 30/08)"
+    )

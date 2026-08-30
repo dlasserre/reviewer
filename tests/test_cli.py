@@ -62,6 +62,13 @@ def config(tmp_path, monkeypatch):
           token_write: env:UN_JETON_ECRITURE
         human:
           notify: "@quelquun"
+        commit:
+          # « Tout est la » a grandi le 30/08 : `check` exige desormais une
+          # identite de commit, parce qu'en conteneur git n'en a AUCUNE et que
+          # le cycle mourait au commit apres avoir paye l'agent. Un profil sans
+          # elle ne decrit donc plus une installation complete.
+          name: "Un Robot"
+          email: "robot@users.noreply.github.com"
         repos:
           backend:
             access: write
@@ -387,7 +394,11 @@ async def test_la_boucle_appelle_le_travail_a_chaque_tour(monkeypatch, tmp_path)
 
     passages = []
 
-    async def faux_run(runner, profils, only, limit):
+    # La signature SUIT celle de `_run`, cinquieme argument compris : la
+    # boucle les passe par POSITION. Un double en retard ne fait pas
+    # echouer ce test, il le fait TOURNER — la boucle rattrape l'erreur et
+    # reessaie, une fois par seconde, indefiniment.
+    async def faux_run(runner, profils, only, limit, tableau=None):
         passages.append(limit)
         if len(passages) >= 3:
             raise asyncio.CancelledError
@@ -406,7 +417,11 @@ async def test_le_premier_passage_est_IMMEDIAT(monkeypatch, tmp_path):
 
     vu = []
 
-    async def faux_run(runner, profils, only, limit):
+    # La signature SUIT celle de `_run`, cinquieme argument compris : la
+    # boucle les passe par POSITION. Un double en retard ne fait pas
+    # echouer ce test, il le fait TOURNER — la boucle rattrape l'erreur et
+    # reessaie, une fois par seconde, indefiniment.
+    async def faux_run(runner, profils, only, limit, tableau=None):
         vu.append(True)
         raise asyncio.CancelledError
 
@@ -425,7 +440,11 @@ async def test_une_erreur_n_arrete_PAS_la_boucle(monkeypatch, tmp_path, capsys):
 
     tours = []
 
-    async def faux_run(runner, profils, only, limit):
+    # La signature SUIT celle de `_run`, cinquieme argument compris : la
+    # boucle les passe par POSITION. Un double en retard ne fait pas
+    # echouer ce test, il le fait TOURNER — la boucle rattrape l'erreur et
+    # reessaie, une fois par seconde, indefiniment.
+    async def faux_run(runner, profils, only, limit, tableau=None):
         tours.append(len(tours))
         if len(tours) == 1:
             raise RuntimeError("GitHub injoignable")
