@@ -41,6 +41,7 @@ visible est exactement la signature qu'on evite.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -57,6 +58,7 @@ from reviewer.graph.sweep import avec_etat_local
 from reviewer.output.events import Event
 from reviewer.repo.checks import run_checks
 from reviewer.repo.git import GitError, commit_all, diff_stat, push
+from reviewer.repo.provision import assurer_outillage
 from reviewer.repo.worktree import WorktreeError
 from reviewer.rules import verdict as verdict_mod
 from reviewer.rules.machine import (Action, PullSnapshot, State,
@@ -335,6 +337,37 @@ async def code(state: JobState, deps: Deps) -> dict:
     p = deps.profile
     decision, etat = state["decision"], state["pull_state"]
     repo_path = Path(state["repo_path"])
+
+    # AVANT le worktree, pas apres : `.venv` y est monte en jonction et les
+    # `.env*` y sont copies DEPUIS la copie locale. Outiller apres coup
+    # laisserait le worktree du jour sans outils — et sa verification mourrait
+    # en « code 127 », que le rapport nomme « verifications rouges ».
+    regle = p.repos[state["repo"]]
+    # DANS UN FIL : `assurer_outillage` est bloquant, et un `pip install` ou un
+    # `npm ci` dure des minutes. L'appeler directement figerait la boucle
+    # d'evenements — donc les DEUX autres jobs que `max_parallel` autorise, qui
+    # n'ont rien demande.
+    outillage = await asyncio.to_thread(
+        assurer_outillage,
+        repo_path, regle.setup, env_files=regle.env_files,
+        scrub_env=deps.runner.claude.scrub_env,
+        on_result=lambda ligne: deps.journal.emit(Event(
+            event="job.setup", profile=p.project, job_id=state["job_id"],
+            repository=state["repo"], pull_request=state["pr"], why=ligne,
+        )),
+    )
+    if not outillage.ok:
+        # On s'ARRETE ici plutot que de laisser les verifications echouer plus
+        # loin sur un motif qui n'a rien a voir avec le code : c'est exactement
+        # la confusion que ce chemin existe pour supprimer.
+        pourquoi = f"outillage du depot impossible : {outillage.summary()}"
+        deps.journal.emit(Event(
+            event="job.setup_failed", profile=p.project, job_id=state["job_id"],
+            repository=state["repo"], pull_request=state["pr"], why=pourquoi,
+            detail={"echecs": [{"commande": c, "sortie": s}
+                               for c, s in outillage.echouees]},
+        ))
+        return {"stop": pourquoi, "reason": pourquoi}
 
     try:
         wt = deps.worktrees.create(
