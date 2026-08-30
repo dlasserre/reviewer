@@ -691,7 +691,20 @@ class ProfileConfig(Strict):
     per_severity: dict[str, "MoteurConfig"] = Field(default_factory=dict)
     permission_mode: str = "acceptEdits"
     max_review_cycles: int = Field(default=3, ge=1)
-    max_turns: int = Field(default=60, ge=1)
+    # Le nombre d'allers-retours d'UN job. MESURE DEUX FOIS, et deux fois trop
+    # bas a 60 : backend#727 le 27/08 (66 appels d'outils pour trois remarques,
+    # coupe avant les tests) et backend#743 le 30/08 (l'agent avait ecrit le
+    # correctif, ecrit deux fichiers de tests, verifie que tout passe — il
+    # installait `ruff` pour la verification finale au tour 60).
+    #
+    # C'est un PLAFOND, pas une cible : un job qui aboutit en 40 tours coute 40
+    # tours quel que soit le plafond. Le relever ne coute donc rien sur les
+    # jobs qui aboutissent, et economise ceux qui mouraient dessus — un job
+    # coupe coute tout ce qu'il a depense, PLUS une escalade humaine, PLUS le
+    # cycle suivant. Le temps et l'argent sont bornes ailleurs, par
+    # `max_minutes_per_job` et `max_jobs_per_day` : les deux jobs coupes ici
+    # tenaient tous les deux dans les six minutes.
+    max_turns: int = Field(default=120, ge=1)
     default_access: Access = Access.CONTEXT
     # Checks qui jugent le PROCESSUS et non le code livre : les compter
     # bloquerait une PR parce qu'une colonne manque quelque part. Vide = le
