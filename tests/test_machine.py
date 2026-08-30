@@ -368,3 +368,59 @@ def test_une_branche_inconnue_ne_declenche_pas_le_garde():
     d = decide(pr(head_ref="", threads=(fil(1),), **FINI),
                trusted_reviewers={CODEX}, max_review_cycles=3, now=T0)
     assert d.state is State.NEEDS_FIX
+
+
+# ── Le forcage ──────────────────────────────────────────────────────────────
+#
+# Deux verrous arretent une PR en attendant UNE PERSONNE : les cycles epuises,
+# et une question posee sans reponse. Aucun des deux n'a de sortie automatique
+# — c'est voulu. Le forcage est cette sortie, et il ne doit rien lever d'autre.
+
+
+def _fil_en_attente(cid=91):
+    """Un fil dont le DERNIER message est une question de l'agent."""
+    from reviewer.rules.machine import AGENT_MARK, ASK_MARK
+
+    return Thread(
+        id=f"PRRT_{cid}", comment_id=cid, author="agent", resolved=False,
+        body=AGENT_MARK + ASK_MARK + " Faut-il changer la signature publique ?",
+        path="app/service.py", line=88,
+    )
+
+
+def test_le_forcage_leve_les_CYCLES_EPUISES():
+    # Trois cycles consommes et une remarque bloquante : la boucle ne converge
+    # pas, on appelle un humain. Quand cet humain dit « vas-y quand meme », il
+    # ne doit pas avoir a editer un YAML ni une base.
+    p = pr(checks=(vert(),), threads=(fil(1),), review_cycle=3, **FINI)
+
+    assert d(p).state is State.NEEDS_HUMAN
+    assert d(p, forced=True).state is State.NEEDS_FIX
+    assert Action.RUN_AGENT in d(p, forced=True).actions
+
+
+def test_le_forcage_leve_l_ATTENTE_DE_REPONSE():
+    # L'agent a pose une question, personne n'a repondu. Repondre dans le fil
+    # relance l'agent — mais la reponse est parfois « laisse tomber, refais un
+    # tour », et celle-la se donne plus vite depuis la console.
+    p = pr(checks=(vert(),), threads=(_fil_en_attente(),), **FINI)
+
+    assert d(p).state is State.NEEDS_HUMAN
+    assert d(p, forced=True).state is not State.NEEDS_HUMAN
+
+
+def test_le_forcage_ne_leve_PAS_une_CI_ILLISIBLE():
+    # Le garde-fou qui compte : forcer dit « je prends la responsabilite de
+    # l'arbitrage », pas « devine a ma place ». Une CI illisible reste
+    # indiscernable d'une CI verte, forcage ou non.
+    p = pr(checks=(), checks_readable=False, review_cycle=9, **FINI)
+
+    assert d(p, forced=True).state is State.NEEDS_HUMAN
+
+
+def test_le_forcage_ne_fabrique_PAS_de_travail():
+    # Une PR verte et sans remarque n'a rien a corriger. Forcer ne doit pas
+    # lancer un agent sur du vide : le bouton serait un piege a cycles.
+    p = pr(checks=(vert(),), threads=(), **FINI)
+
+    assert Action.RUN_AGENT not in d(p, forced=True).actions

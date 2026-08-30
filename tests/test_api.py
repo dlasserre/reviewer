@@ -176,7 +176,16 @@ def test_la_console_ne_depend_d_AUCUN_reseau_externe(app_ctx):
 # `/sweep` y figure parce qu'il ne change AUCUN reglage — il ne dit pas ce que
 # le demon a le droit de faire, il dit QUAND il fait ce qu'il ferait de toute
 # facon. Un reglage change le perimetre, un reveil change l'horloge.
-ROUTES_MUTANTES_AUTORISEES = {"/sweep"}
+ROUTES_MUTANTES_AUTORISEES = {
+    # Ne change pas ce que le demon a le DROIT de faire : change QUAND il fait
+    # ce qu'il ferait de toute facon.
+    "/sweep",
+    # Ne change pas non plus ses droits : change SUR QUOI il travaille. Leve
+    # les deux verrous qui attendent une personne — cycles epuises, question
+    # sans reponse — et rien d'autre : ni le bail, ni les branches partagees,
+    # ni les verifications, ni le plafond de jobs du jour.
+    "/forcer/{profil}/{depot}/{pr}",
+}
 
 
 def test_la_console_n_expose_AUCUNE_route_de_configuration(app_ctx):
@@ -230,3 +239,63 @@ def test_les_profils_rendent_le_moteur_RESOLU_pas_la_table_brute(app_ctx):
     assert set(p["engine"]) == {"P1", "P2", "P3", "UNKNOWN"}
     for reglage in p["engine"].values():
         assert set(reglage) == {"model", "effort"}
+
+
+# ── Reprendre une PR depuis la console ──────────────────────────────────────
+
+
+@pytest.fixture
+def app_forcable(tmp_path):
+    """Le meme demon, mais capable de TRAVAILLER : sans reveil ni registre,
+    forcer une PR n'aurait aucun effet, et la route le refuse."""
+    from reviewer.__main__ import Forcages, Reveil
+
+    t = str(tmp_path).replace("\\", "/")
+    (tmp_path / "runner.yaml").write_text(
+        textwrap.dedent(RUNNER.format(tmp=t)), encoding="utf-8")
+    (tmp_path / "p.yaml").write_text(
+        textwrap.dedent(PROFIL.format(tmp=t)), encoding="utf-8")
+    runner = load_runner(tmp_path / "runner.yaml")
+    profil = load_profile(tmp_path / "p.yaml")
+    store = StateStore(runner.state_db)
+    journal = Journal(runner.logs_dir, profile="demo")
+    forcages, reveil = Forcages(), Reveil()
+    app = create_app(runner, {"demo": profil}, store, journal,
+                     sse_keepalive_s=0.2, reveil=reveil, forcages=forcages)
+    with TestClient(app) as client:
+        yield client, forcages, reveil
+    store.close()
+
+
+def test_forcer_inscrit_la_PR_et_demande_un_balayage(app_forcable):
+    client, forcages, reveil = app_forcable
+
+    r = client.post("/forcer/demo/api/714")
+
+    assert r.status_code == 200, r.text
+    assert r.json()["force"] is True
+    # Inscrit sous la forme que le balayage lit, et visible tant qu'il n'a pas
+    # ete consomme : sans cette trace, un clic serait indiscernable d'un oubli.
+    assert forcages.pour("demo") == {("api", 714)}
+    assert client.get("/forcages").json()["forcages"] == [
+        {"profile": "demo", "repository": "api", "pull_request": 714}]
+
+
+def test_forcer_une_cible_INCONNUE_est_refuse_sans_rien_inscrire(app_forcable):
+    client, forcages, _ = app_forcable
+
+    assert client.post("/forcer/demo/inexistant/714").status_code == 404
+    assert client.post("/forcer/inconnu/api/714").status_code == 404
+    # Un refus qui laisse une trace ferait travailler le demon sur une cible
+    # que l'appelant croit rejetee.
+    assert forcages.liste() == []
+
+
+def test_sans_travail_forcer_est_REFUSE_plutot_que_muet(app_ctx):
+    # `--no-work` : le processus expose l'etat et ne balaie jamais. Accepter le
+    # forcage donnerait un bouton qui ne fait rien, sans le dire.
+    client, _, _ = app_ctx
+
+    r = client.post("/forcer/demo/api/714")
+    assert r.status_code == 409
+    assert "no-work" in r.json()["detail"]

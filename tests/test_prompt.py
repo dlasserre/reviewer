@@ -121,8 +121,17 @@ def test_l_identifiant_du_fil_est_donne_pour_la_resolution():
 
 
 def test_les_gestes_attendus_sont_demandes():
+    # Le 30/08/2026, « VERIFIER en lancant les tests du depot avant de conclure »
+    # a ete remplace par « CONTROLER au plus court si cela aide a coder » suivi
+    # de « RENDRE des que le correctif est coherent » : les verifications
+    # completes appartiennent au runner, pas a l'agent, et les lui faire
+    # relancer payait deux fois le meme travail — parfois jusqu'a epuiser ses
+    # tours avant qu'il ait pu conclure.
+    #
+    # Cette liste suit donc la redaction du prompt. Elle n'est pas decorative :
+    # elle est ce qui empeche une etape de disparaitre par accident.
     p = build_fix_prompt(PR, [fil()])
-    for geste in ("LIRE", "RESPECTER", "CORRIGER", "VERIFIER", "RENDRE"):
+    for geste in ("LIRE", "RESPECTER", "CORRIGER", "CONTROLER", "RENDRE"):
         assert geste in p.text
 
 

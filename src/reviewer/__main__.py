@@ -313,7 +313,8 @@ def _assurer_confiance(runner: RunnerConfig, nom: str, ecrivables: dict,
 
 async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                only: str | None, limit: int,
-               tableau: "Tableau | None" = None) -> int:
+               tableau: "Tableau | None" = None,
+               forcages: "Forcages | None" = None) -> int:
     """Balaye, puis fait tourner le graphe sur le travail identifie.
 
     La borne `limit` est volontairement BASSE par defaut. Un passage qui lance
@@ -349,7 +350,9 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                         profile.forge.org, _token(profile),
                         ignored_checks=compile_ignored(profile.ignored_checks)
                 ) as reader:
-                    rapport = await sweep_profile(profile, reader, journal, store)
+                    rapport = await sweep_profile(
+                        profile, reader, journal, store,
+                        forces=forcages.pour(nom) if forcages else None)
                     rapports.append(rapport)
                     print(f"\n=== {nom} — {rapport.summary()}")
 
@@ -410,6 +413,13 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
                             for lignes in blocs:
                                 print("\n".join(lignes))
                             lances += sum(1 for o in vague if o.actionable)
+                            # Consomme APRES coup : un forcage retire avant que
+                            # le job demarre serait perdu si le passage echoue
+                            # entre les deux, et le demandeur aurait clique pour
+                            # rien sans jamais le savoir.
+                            if forcages is not None:
+                                for o in vague:
+                                    forcages.retirer(nom, o.repo, o.number)
                     finally:
                         if writer is not None:
                             await writer.__aexit__(None, None, None)
@@ -419,7 +429,7 @@ async def _run(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         # rien parce qu'un depot a echoue ferait croire que le demon ne voit
         # aucune PR, alors qu'il en voit et qu'il l'a dit dans son bilan.
         if tableau is not None:
-            tableau.poser(rapports)
+            tableau.poser(rapports, profils)
 
     if not runner.writes_enabled:
         print("\nLecture seule (writes_enabled: false) : prompts construits, "
@@ -440,29 +450,100 @@ class Tableau:
         self.pulls: list[dict] = []
         self.balaye_a: str | None = None
 
-    def poser(self, rapports) -> None:
+    def poser(self, rapports, profils: "dict | None" = None) -> None:
+        """La photo, avec de quoi OUVRIR la PR et lire ce qui s'y passe.
+
+        Les compteurs seuls (« 1 fil(s) ») disent qu'il se passe quelque chose
+        sans dire quoi : il fallait aller sur GitHub pour savoir de quelle
+        remarque on parlait. Le detail voyage donc avec la photo — il est deja
+        lu, le servir ne coute pas un appel de plus a la forge.
+        """
         from datetime import datetime, timezone  # noqa: PLC0415
 
         vu: list[dict] = []
         for rapport in rapports:
+            prof = (profils or {}).get(rapport.profile)
+            org = prof.forge.org if prof is not None else None
+            # L'URL est construite ICI plutot que dans le navigateur : la forme
+            # d'une adresse appartient a la forge, et le jour ou l'adaptateur
+            # ne sera plus GitHub, une page qui la fabriquait aurait menti.
+            gh = org and (prof.forge.adapter == "github")
             for o in rapport.outcomes:
+                s = o.snapshot
                 vu.append({
                     "profile": rapport.profile,
                     "repository": o.repo,
                     "pull_request": o.number,
-                    "titre": o.snapshot.head_ref,
-                    "auteur": o.snapshot.author,
+                    "titre": s.head_ref,
+                    "auteur": s.author,
                     "etat": o.decision.state.value,
                     "raison": o.decision.reason,
-                    "cycle": o.snapshot.review_cycle,
+                    "cycle": s.review_cycle,
                     # Ce qui DEMANDE quelque chose : c'est ce qui distingue une
                     # PR qu'on regarde d'une PR sur laquelle on va agir.
                     "actions": [a.value for a in o.decision.actions],
                     "fils": len(o.decision.threads),
+                    "url": (f"https://github.com/{org}/{o.repo}/pull/{o.number}"
+                            if gh else None),
+                    "base": s.base_ref,
+                    "brouillon": s.draft,
+                    "checks": [{"nom": c.name, "etat": c.status,
+                                "verdict": c.conclusion} for c in s.checks],
+                    "checks_lisibles": s.checks_readable,
+                    "fils_detail": [{
+                        "auteur": t.author,
+                        "resolu": t.resolved,
+                        "attente": t.awaiting_human,
+                        "fichier": t.path,
+                        "ligne": t.line,
+                        # Borne : un fil de revue peut contenir un diff entier,
+                        # et la photo vit en memoire dans le processus du demon.
+                        "messages": [{"auteur": c.author, "corps": c.body[:1500]}
+                                     for c in (t.comments or ())] or
+                                    [{"auteur": t.author, "corps": t.body[:1500]}],
+                    } for t in s.threads],
                 })
         vu.sort(key=lambda p: (p["repository"], p["pull_request"]))
         self.pulls = vu
         self.balaye_a = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class Forcages:
+    """Les PR sur lesquelles une personne a dit « vas-y quand meme ».
+
+    ── POURQUOI EN MEMOIRE ────────────────────────────────────────────────
+
+    Un forcage est un GESTE, pas un reglage : il vaut pour le passage qui
+    suit, puis il n'existe plus. Le persister creerait un etat durable a cote
+    de la forge — et un forcage oublie en base qui se rejoue trois jours plus
+    tard serait exactement le genre de surprise que ce demon evite.
+
+    Consequence assumee : redemarrer le demon efface les forcages en attente.
+    C'est le bon comportement. On reclique.
+
+    ── CONSOMME AU DEMARRAGE DU JOB, PAS A LA DECISION ────────────────────
+
+    `retirer` est appele quand le travail part vraiment. Consommer des la
+    decision perdrait le forcage si le passage echoue avant d'agir — le
+    demandeur aurait clique pour rien, sans le savoir.
+    """
+
+    def __init__(self) -> None:
+        self._en_attente: set[tuple[str, str, int]] = set()
+
+    def demander(self, profil: str, depot: str, pr: int) -> None:
+        self._en_attente.add((profil, depot, pr))
+
+    def pour(self, profil: str) -> set[tuple[str, int]]:
+        """Ce qui est force sur CE profil, sous la forme que le balayage lit."""
+        return {(d, n) for (p, d, n) in self._en_attente if p == profil}
+
+    def retirer(self, profil: str, depot: str, pr: int) -> None:
+        self._en_attente.discard((profil, depot, pr))
+
+    def liste(self) -> list[dict]:
+        return [{"profile": p, "repository": d, "pull_request": n}
+                for (p, d, n) in sorted(self._en_attente)]
 
 
 class Reveil:
@@ -501,7 +582,8 @@ class Reveil:
 async def _boucle_de_travail(runner: RunnerConfig,
                              profils: dict[str, ProfileConfig],
                              limit: int, reveil: "Reveil | None" = None,
-                             tableau: "Tableau | None" = None) -> None:
+                             tableau: "Tableau | None" = None,
+                             forcages: "Forcages | None" = None) -> None:
     """Balaye et traite, indefiniment, toutes les `reconcile_every`.
 
     Le modele DECLENCHE SUR NIVEAU rend cette boucle suffisante a elle seule :
@@ -518,7 +600,7 @@ async def _boucle_de_travail(runner: RunnerConfig,
         if reveil is not None:
             reveil.en_cours = True
         try:
-            await _run(runner, profils, None, limit, tableau)
+            await _run(runner, profils, None, limit, tableau, forcages)
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001
@@ -555,8 +637,11 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
 
     reveil = Reveil() if travailler else None
     tableau = Tableau()
+    # Pas de registre quand le demon ne travaille pas : forcer une PR sur un
+    # processus qui ne balaie jamais serait un bouton qui ne fait rien.
+    forcages = Forcages() if travailler else None
     app = create_app(runner, profils, store, journal, reveil=reveil,
-                     tableau=tableau)
+                     tableau=tableau, forcages=forcages)
     print(f"API locale : http://{runner.api.bind}:{runner.api.port}")
     print("  console : /   etat : /jobs   flux : /events   sante : /health")
     if travailler:
@@ -584,7 +669,8 @@ def _serve(runner: RunnerConfig, profils: dict[str, ProfileConfig],
         taches = [asyncio.create_task(serveur.serve())]
         if travailler:
             taches.append(asyncio.create_task(
-                _boucle_de_travail(runner, profils, limit, reveil, tableau)))
+                _boucle_de_travail(runner, profils, limit, reveil, tableau,
+                                   forcages)))
         try:
             await asyncio.gather(*taches)
         finally:
