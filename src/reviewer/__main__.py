@@ -737,6 +737,17 @@ def _diagnostic(profile: ProfileConfig, runner: RunnerConfig) -> list[str]:
             profile.forge.token_write.resolve()
         except ConfigError as e:
             manques.append(f"[{p}] {e}")
+    if profile.commit.identite is None:
+        # Mesure du 30/08/2026 : premier cycle reel en conteneur, arrete au
+        # commit — « Author identity unknown ». Tout le travail etait fait :
+        # agent lance, verdict rendu, verifications passees. Le dire ICI, c'est
+        # ce qui evite de le decouvrir apres avoir paye un cycle.
+        manques.append(
+            f"[{p}] commit.name / commit.email absents — l'agent commitera sous "
+            "l'identite git de la machine. En conteneur il n'y en a AUCUNE, et "
+            "le cycle s'arrete au commit avec « Author identity unknown », "
+            "apres avoir lance l'agent."
+        )
     if profile.human.notify is None:
         manques.append(
             f"[{p}] human.notify absent — quand l'agent demandera un arbitrage, "

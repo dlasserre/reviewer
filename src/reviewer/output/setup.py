@@ -251,6 +251,15 @@ def create_setup_app(chemin_runner: Path, *, port: int = 8788) -> FastAPI:
                 await _cloner(inst, d["nom"], espace)
 
             dire("etape", "Configuration")
+            # On redemande QUI est ce jeton plutot que de croire la page : c'est
+            # cette identite qui signera les commits, et une valeur venue du
+            # navigateur n'est pas une valeur verifiee.
+            try:
+                login = verifier_jeton(inst.token_read)["login"]
+            except Exception:  # noqa: BLE001 — degrade, ne bloque pas
+                login = ""
+                dire("erreur", "identite de commit indeterminee : "
+                               "a completer dans le profil (`commit:`)")
             chemin_runner.write_text(
                 _yaml_runner(racine=racine, port=port,
                              oauth="env:CLAUDE_CODE_OAUTH_TOKEN", arme=False,
@@ -269,7 +278,8 @@ def create_setup_app(chemin_runner: Path, *, port: int = 8788) -> FastAPI:
                              "path": str(espace / d["nom"]),
                              "checks": deviner_checks(espace / d["nom"])
                              if d["access"] == "write" else []}
-                            for d in inst.depots]),
+                            for d in inst.depots],
+                    commit_login=login or None),
                 encoding="utf-8")
             dire("ok", f"runner.yaml et profils/{inst.projet}.yaml ecrits")
             dire("termine", "Installation faite. Le demon redemarre.")

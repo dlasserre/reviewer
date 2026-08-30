@@ -460,6 +460,37 @@ class MoteurConfig(Strict):
     _modele_non_vide = field_validator("model")(_valider_modele)
 
 
+class CommitConfig(Strict):
+    """Sous quelle identite l'agent commite.
+
+    GitHub attribue un commit par son ADRESSE. Une adresse inconnue donne un
+    commit sans visage, impossible a rattacher — d'ou le refus d'une identite
+    generique posee dans l'image.
+
+    Ce qu'on veut, c'est le proprietaire du JETON : c'est lui qui pousse, et
+    l'assistant l'a deja verifie contre la forge. `<login>@users.noreply.github.com`
+    est l'adresse que GitHub reconnait sans exposer d'adresse reelle.
+
+    Les deux champs absents = on laisse git decider. Sur un poste, la
+    configuration globale existe et c'est la bonne ; en conteneur elle n'existe
+    pas, et `check` le dit.
+    """
+
+    name: str | None = None
+    email: str | None = None
+
+    @property
+    def identite(self) -> tuple[str, str] | None:
+        """Rend le couple, ou `None` s'il est incomplet.
+
+        Incomplet et absent sont traites pareil : commiter avec un nom sans
+        adresse echouerait de la meme facon, plus loin.
+        """
+        if self.name and self.email:
+            return (self.name, self.email)
+        return None
+
+
 class ScopeConfig(Strict):
     """Quelles PR CE demon prend en charge.
 
@@ -629,6 +660,7 @@ class ProfileConfig(Strict):
     reviewers: ReviewersConfig = Field(default_factory=ReviewersConfig)
     human: HumanConfig = Field(default_factory=HumanConfig)
     scope: ScopeConfig = Field(default_factory=ScopeConfig)
+    commit: CommitConfig = Field(default_factory=CommitConfig)
     issues: IssuesConfig = Field(default_factory=IssuesConfig)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     plugins: list[Path] = Field(default_factory=list)

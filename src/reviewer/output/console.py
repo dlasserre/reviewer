@@ -311,6 +311,22 @@ PAGE = """<!doctype html>
   .ligne.noeud-fil .txt { color: var(--encre); font-weight: 560; }
   .ligne.mauvais .quoi, .ligne.mauvais .txt { color: var(--rouge); }
   .ligne.bon .quoi { color: var(--cyan); }
+  /* Ce que l'agent DIT : en prose et non en monospace — c'est du raisonnement,
+     pas une commande. */
+  .ligne.dit .quoi { color: var(--violet); }
+  .ligne.dit .txt { color: var(--doux); font-style: italic; }
+
+  .ligne.pliable { cursor: pointer; }
+  .ligne.pliable .quoi::after { content: " +"; color: var(--trait2); }
+  .ligne.pliable.ouvert .quoi::after { content: " -"; }
+  .ligne .detail { display: none; }
+  .ligne.ouvert .detail {
+    display: block; grid-column: 2 / -1; margin: 6px 0 2px;
+    padding: 9px 11px; border-radius: 8px; background: rgba(4,7,10,.7);
+    border: 1px solid var(--trait); color: var(--doux);
+    font: 11.5px/1.55 var(--mono); white-space: pre-wrap; overflow-x: auto;
+    max-height: 260px; overflow-y: auto;
+  }
   .vide { padding: 46px 16px; text-align: center; color: var(--pale); font-size: 13px; }
 
   /* ── Modale ──────────────────────────────────────────────────────────── */
@@ -885,13 +901,18 @@ const QUOI = {
   "job.dry_run": ["a blanc", ""], "job.moteur": ["moteur", ""],
   "sweep.done": ["balayage", ""], "sweep.decision": ["decide", ""],
   "lease.reclaimed": ["bail", ""], "notify.dry_run": ["muet", ""],
+  "job.diff": ["diff", "bon"],
   "sweep.demande": ["balayage", "bon"], "sweep.refuse": ["balayage", ""],
   "sweep.echec": ["balayage", "mauvais"],
 };
 const heure = (ts) => (ts || "").slice(11, 19);
 
 function ligne(e) {
-  const [mot, style] = QUOI[e.event] || [e.event.split(".").pop(), ""];
+  let [mot, style] = QUOI[e.event] || [e.event.split(".").pop(), ""];
+  // Ce que l'agent DIT n'est pas ce qu'il LANCE. Sous la meme etiquette, une
+  // phrase de raisonnement se lit comme une commande.
+  if (e.event === "agent.step" && e.state === "texte") { mot = "dit"; style = "dit"; }
+
   const d = document.createElement("div");
   d.className = "ligne " + style;
   const h = document.createElement("span"); h.className = "h"; h.textContent = heure(e.ts);
@@ -904,7 +925,33 @@ function ligne(e) {
     t.textContent = e.why || e.result || e.state || "";
   }
   d.append(h, q, t);
+
+  // Le DETAIL : sortie d'un check rouge, fichiers d'un diff, anomalies d'un
+  // verdict. Il etait deja dans le journal et rien ne l'affichait — il fallait
+  // rouvrir le fichier sur disque pour lire ce que la commande avait dit.
+  // Replie par defaut : deploye, il noierait la sequence.
+  const detail = detailLisible(e);
+  if (detail) {
+    d.classList.add("pliable");
+    const p = document.createElement("pre");
+    p.className = "detail";
+    p.textContent = detail;
+    d.appendChild(p);
+    d.onclick = () => d.classList.toggle("ouvert");
+  }
   return d;
+}
+
+// Ce qu'on sait rendre LISIBLE. Le reste du `detail` est une structure interne :
+// l'afficher brute donnerait du JSON a lire a quelqu'un qui cherche pourquoi un
+// test a echoue.
+function detailLisible(e) {
+  const d = e.detail;
+  if (!d) return "";
+  if (typeof d.tail === "string" && d.tail.trim()) return d.tail.trim();
+  if (Array.isArray(d.files) && d.files.length) return d.files.join("\n");
+  if (Array.isArray(d.anomalies) && d.anomalies.length) return d.anomalies.join("\n");
+  return "";
 }
 
 function filer() {

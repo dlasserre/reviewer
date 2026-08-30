@@ -420,6 +420,16 @@ async def judge(state: JobState, deps: Deps) -> dict:
                 "reason": f"l'agent s'est arrete : {v.blocked}"}
 
     diff = diff_stat(Path(state["worktree"]))
+    # CE QUI A CHANGE, avant meme de savoir si ca partira. Un arret apres cette
+    # etape — verifications rouges, push refuse — laissait sinon zero trace du
+    # travail reellement produit : on voyait passer des `Edit`, jamais le bilan.
+    deps.journal.emit(Event(
+        event="job.diff", profile=deps.profile.project, job_id=state["job_id"],
+        repository=state["repo"], pull_request=state["pr"],
+        why=diff.summary(),
+        detail={"files": list(diff.files),
+                "insertions": diff.insertions, "deletions": diff.deletions},
+    ))
     corriges = [t for t in v.threads if t.outcome is Issue.CORRIGE]
     if corriges and diff.empty:
         raison = (f"{len(corriges)} fil(s) declares corriges mais l'arbre est "
@@ -479,6 +489,7 @@ async def publish(state: JobState, deps: Deps) -> dict:
         v.commit_message(state["repo"], etat.review_cycle + 1,
                          issue=state.get("issue")),
         protected_refs=p.shared_refs,
+        auteur=p.commit.identite,
     )
 
     jeton = state.get("write_token")

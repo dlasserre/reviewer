@@ -112,7 +112,8 @@ _SUJET_CONVENTIONNEL = re.compile(
 
 def commit_all(worktree: Path, message: str, *,
                protected_refs: frozenset[str] | set[str] = BRANCHES_PARTAGEES,
-               protected_globs: tuple[str, ...] = PROTECTED_GLOBS) -> Diff:
+               protected_globs: tuple[str, ...] = PROTECTED_GLOBS,
+               auteur: tuple[str, str] | None = None) -> Diff:
     """Commite tout l'arbre, apres verification. Rend le diff commite.
 
     Leve plutot que de commiter a moitie : un commit partiel produit une PR dont
@@ -145,10 +146,28 @@ def commit_all(worktree: Path, message: str, *,
         )
 
     _git(worktree, "add", "-A")
+
+    # L'identite est passee A LA COMMANDE (`-c`), pas ecrite dans la
+    # configuration du depot. Deux raisons :
+    #
+    #   - le worktree est derive d'un depot qui appartient a quelqu'un ; y
+    #     ecrire une identite modifierait sa configuration ;
+    #   - un `-c` ne vaut que pour cette commande, donc il ne peut pas fuir sur
+    #     un commit que l'humain ferait ensuite dans le meme depot.
+    #
+    # Sans identite fournie, on laisse git decider : sur un poste, la
+    # configuration globale existe et c'est la bonne. En conteneur elle
+    # n'existe pas, et le message de git est explicite — `check` le signale
+    # d'ailleurs avant que ca ne coute un cycle.
+    prefixe: list[str] = []
+    if auteur:
+        nom, courriel = auteur
+        prefixe = ["-c", f"user.name={nom}", "-c", f"user.email={courriel}"]
+
     # `--no-verify` n'est PAS passe : si le depot a des hooks de pre-commit, ils
     # doivent tourner. Les contourner ferait passer en CI ce qui aurait ete
     # rattrape en local.
-    _git(worktree, "commit", "-m", message)
+    _git(worktree, *prefixe, "commit", "-m", message)
     return diff
 
 

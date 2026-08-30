@@ -327,7 +327,8 @@ max_parallel: 3
 def _yaml_profil(*, projet: str, org: str, workspace: Path, lecture: str,
                  ecriture: str | None, notify: str, relecteurs: list[str],
                  depots: list[dict[str, Any]],
-                 auteurs: list[str] | None = None) -> str:
+                 auteurs: list[str] | None = None,
+                 commit_login: str | None = None) -> str:
     lignes = [
         f"# Le projet « {projet} ». Copier ce fichier suffit a ajouter un projet :",
         "# le moteur n'est pas touche.",
@@ -365,6 +366,23 @@ def _yaml_profil(*, projet: str, org: str, workspace: Path, lecture: str,
     lignes += [f"    - {r}" for r in relecteurs] or ["    []"]
 
     lignes.append("")
+    if commit_login:
+        lignes += [
+            "# Sous quelle identite l'agent commite.",
+            "#",
+            "# GitHub attribue un commit par son ADRESSE : une adresse inconnue",
+            "# donne un commit sans visage. On prend donc celle du proprietaire",
+            "# du jeton — c'est lui qui pousse — sous la forme `noreply` que",
+            "# GitHub reconnait sans exposer d'adresse reelle.",
+            "#",
+            "# Absente, git decide : sur un poste sa configuration globale existe,",
+            "# en conteneur elle n'existe pas et le commit echoue.",
+            "commit:",
+            f"  name: {commit_login}",
+            f"  email: {commit_login}@users.noreply.github.com",
+            "",
+        ]
+
     if auteurs:
         lignes += [
             "# QUELLES PR ce demon prend en charge.",
@@ -612,7 +630,8 @@ def assistant(chemin_runner: Path) -> int:
         (chemin_profil, _yaml_profil(projet=projet, org=org, workspace=workspace,
                                      lecture=ref_lecture, ecriture=ref_ecriture,
                                      notify=notify, relecteurs=relecteurs,
-                                     depots=depots, auteurs=auteurs)),
+                                     depots=depots, auteurs=auteurs,
+                                     commit_login=qui["login"])),
     ):
         cible.parent.mkdir(parents=True, exist_ok=True)
         if copie := sauvegarder(cible):
