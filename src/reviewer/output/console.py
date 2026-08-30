@@ -949,8 +949,8 @@ function detailLisible(e) {
   const d = e.detail;
   if (!d) return "";
   if (typeof d.tail === "string" && d.tail.trim()) return d.tail.trim();
-  if (Array.isArray(d.files) && d.files.length) return d.files.join("\n");
-  if (Array.isArray(d.anomalies) && d.anomalies.length) return d.anomalies.join("\n");
+  if (Array.isArray(d.files) && d.files.length) return d.files.join("\\n");
+  if (Array.isArray(d.anomalies) && d.anomalies.length) return d.anomalies.join("\\n");
   return "";
 }
 
