@@ -293,12 +293,44 @@ class WorktreeManager:
             return _git(depot, "rev-parse", "--verify", "--quiet", ref,
                         check=False).returncode == 0
 
+        def _rapatrier(nom: str) -> bool:
+            """La branche distante existe-t-elle ici — et sinon, va la chercher.
+
+            Le `fetch origin` fait plus haut ne suffit PAS : sur un clone
+            restreint a une branche (`--depth` implique `--single-branch`, et
+            les volumes clones avant le correctif le sont restes), le refspec du
+            remote ne couvre que le tronc. La commande reussit sans rien
+            ramener, et son succes cache l'echec qui suit.
+
+            Le refspec EXPLICITE cree la reference quel que soit l'etat du
+            clone. Mesure du 30/08/2026 sur `frontend#407` : « fatal: invalid
+            reference: origin/dev » sur un clone qui pouvait parfaitement
+            joindre origin — il ne demandait juste jamais `dev`.
+            """
+            if _connue(f"refs/remotes/origin/{nom}"):
+                return True
+            _git(depot, "fetch", "--quiet", "origin",
+                 f"+refs/heads/{nom}:refs/remotes/origin/{nom}", check=False)
+            return _connue(f"refs/remotes/origin/{nom}")
+
         if _connue(f"refs/heads/{branch}"):
             _git(depot, "worktree", "add", str(cible), branch)
-        elif _connue(f"refs/remotes/origin/{branch}"):
+        elif _rapatrier(branch):
+            # Le rapatriement participe au TRI, pas seulement a la reparation :
+            # une branche distante invisible sur un clone restreint tombait
+            # sinon dans le cas « nulle » et etait RECREEE depuis le socle — le
+            # piege que le commentaire ci-dessus decrit, rouvert par en dessous.
             _git(depot, "worktree", "add", "-b", branch, str(cible),
                  f"origin/{branch}")
         else:
+            if not _rapatrier(base):
+                raise WorktreeError(
+                    f"« origin/{base} » est introuvable, meme apres un "
+                    f"rapatriement cible. Soit la branche n'existe pas sur "
+                    f"origin, soit le jeton ne peut pas la lire — dans les deux "
+                    f"cas, deriver depuis autre chose serait travailler sur le "
+                    f"mauvais arbre."
+                )
             _git(depot, "worktree", "add", "-b", branch, str(cible), f"origin/{base}")
 
         # Verifier que git a VRAIMENT enregistre le worktree. Le renommage du
