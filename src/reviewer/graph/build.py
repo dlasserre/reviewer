@@ -223,6 +223,7 @@ async def lancer_job(
     job_id: str,
     repo_path: str,
     write_token: str | None = None,
+    forced: bool = False,
 ) -> JobState:
     """Un cycle complet sur une PR. Rend l'etat final.
 
@@ -231,7 +232,8 @@ async def lancer_job(
     et un cablage faux doit lever, pas tourner.
     """
     depart = etat_initial(project=project, repo=repo, pr=pr, job_id=job_id,
-                          repo_path=repo_path, write_token=write_token)
+                          repo_path=repo_path, write_token=write_token,
+                          forced=forced)
     return await graphe.ainvoke(
         depart,
         config={"configurable": {"thread_id": job_id}, "recursion_limit": 25},

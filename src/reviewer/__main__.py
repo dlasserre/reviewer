@@ -259,6 +259,9 @@ async def _traiter(graphe, o: Outcome, *, profile: ProfileConfig,
         project=profile.project, repo=o.repo, pr=o.number,
         job_id=new_job_id(), repo_path=str(profile.repos[o.repo].path),
         write_token=jeton,
+        # Le graphe RE-DECIDE : sans le forcage, il redecouvre le verrou que le
+        # balayage venait de lever, et le cycle meurt juste apres `decider`.
+        forced=o.forced,
     )
     return _lignes_du_job(o, final, profile)
 

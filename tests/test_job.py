@@ -244,6 +244,7 @@ class Lanceur:
             repo=outcome.repo, pr=outcome.number,
             job_id=new_job_id(), repo_path=str(repo_path),
             write_token=write_token,
+            forced=outcome.forced,
         )
         return Resultat(final)
 
@@ -1170,3 +1171,86 @@ def test_une_tete_PARTAGEE_derive_encore_vers_elle_meme(atelier):
     snap = PullSnapshot(number=727, repo="backend", head_sha="abc",
                         head_ref="dev", base_ref="main")
     assert _derivation(snap, _deps_de(profil)) == (True, "dev")
+
+
+# ── Le forcage doit atteindre le noeud `decider` ────────────────────────────
+
+
+async def test_une_reprise_TRAVERSE_le_graphe_qui_redecide(atelier):
+    """Observe sur backend#762 le 31/08.
+
+        16:55:14  sweep.decision  1 fil ouvert           (NEEDS_FIX)
+        16:55:15  graph.node      le job demarre
+        16:55:16  decide          1 question en attente  (NEEDS_HUMAN)
+
+    Le balayage decidait « il y a du travail » avec le forcage ; le graphe
+    RE-DECIDAIT sans lui, retrouvait la question en attente, et le cycle mourait
+    juste apres `decider`. Le clic ne produisait qu'un job mort-ne — et la
+    console l'affichait « interrompu », sans dire pourquoi.
+
+    Que le graphe re-decide est VOULU : entre le balayage et le job, la forge a
+    pu bouger. Mais il doit re-decider sur les MEMES entrees.
+    """
+    from reviewer.rules.machine import AGENT_MARK, ASK_MARK, Check, Comment
+
+    agent = agent_qui("x = 2\n")
+    jr, depot, _ = runner_de(atelier, agent)
+
+    codex = list(atelier[2].reviewers.trust)[0]
+    fil = Thread(
+        id="PRRT_9", comment_id=1, author=codex, resolved=False,
+        body="**![P1 Badge](x)** Ne court-circuitez pas la creation",
+        path="app/service.py", line=88,
+        comments=(
+            Comment(1, codex, "**![P1 Badge](x)** Ne court-circuitez pas la creation"),
+            Comment(9, codex, AGENT_MARK + ASK_MARK + " Correctif ecrit, non valide."),
+        ),
+    )
+    snap = PullSnapshot(number=714, repo="backend", head_sha="abc",
+                        head_ref="fix/714-truc",
+                        checks=(Check("Test backend", "completed", "success"),),
+                        threads=(fil,))
+
+    # La decision du BALAYAGE, forcee — celle que le clic produit reellement.
+    d = decide(snap, trusted_reviewers=frozenset(atelier[2].reviewers.trust),
+               max_review_cycles=atelier[2].max_review_cycles, forced=True)
+    assert Action.RUN_AGENT in d.actions, "la fixture ne decrit plus une reprise"
+
+    r = await jr.run(Outcome("backend", 714, d, snap, forced=True),
+                     repo_path=depot)
+
+    assert agent.vu, (
+        "le graphe a re-decide sans le forcage : le cycle est mort apres "
+        "`decider`, exactement comme sur backend#762")
+    assert r.state is not State.NEEDS_HUMAN
+
+
+async def test_sans_reprise_la_question_en_attente_ARRETE_toujours(atelier):
+    # Le pendant : sans forcage, une question sans reponse doit continuer
+    # d'arreter le cycle. Sinon le correctif aurait supprime le verrou pour
+    # tout le monde.
+    from reviewer.rules.machine import AGENT_MARK, ASK_MARK, Check, Comment
+
+    agent = agent_qui("x = 2\n")
+    jr, depot, _ = runner_de(atelier, agent)
+    codex = list(atelier[2].reviewers.trust)[0]
+    fil = Thread(
+        id="PRRT_9", comment_id=1, author=codex, resolved=False,
+        body="**![P1 Badge](x)** Ne court-circuitez pas la creation",
+        path="app/service.py", line=88,
+        comments=(
+            Comment(1, codex, "**![P1 Badge](x)** Ne court-circuitez pas la creation"),
+            Comment(9, codex, AGENT_MARK + ASK_MARK + " Correctif ecrit, non valide."),
+        ),
+    )
+    snap = PullSnapshot(number=714, repo="backend", head_sha="abc",
+                        head_ref="fix/714-truc",
+                        checks=(Check("Test backend", "completed", "success"),),
+                        threads=(fil,))
+    d = decide(snap, trusted_reviewers=frozenset(atelier[2].reviewers.trust),
+               max_review_cycles=atelier[2].max_review_cycles)
+    assert d.state is State.NEEDS_HUMAN
+
+    await jr.run(Outcome("backend", 714, d, snap), repo_path=depot)
+
+    assert agent.vu == {}, "sans reprise, l'agent ne doit PAS tourner"
