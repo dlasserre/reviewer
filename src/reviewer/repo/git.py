@@ -34,6 +34,28 @@ class GitError(Exception):
     """Une operation git a echoue, ou a ete refusee avant d'etre tentee."""
 
 
+# Tout ce qui suit « AUTHORIZATION: <schema> » est un secret. Le motif vise la
+# VALEUR, pas la cle : un message qui cite l'entete sans sa valeur reste lisible
+# et ne trahit rien.
+_ENTETE_SECRETE = re.compile(
+    r"(AUTHORIZATION:\s*\w+\s+)\S+", re.IGNORECASE)
+
+
+def sans_secret(texte: str) -> str:
+    """Masque un jeton d'autorisation dans un texte destine au journal.
+
+    Le 31/08/2026, un push rejete a ecrit le PAT complet dans le journal du
+    demon — et la console l'a affiche. Le jeton etait passe en `argv`
+    (`-c http.extraheader=...`), et `_git` recopiait `argv` dans son erreur.
+
+    `push` ne passe plus par `argv` (cf. sa docstring). Cette fonction reste,
+    en defense : git peut citer une valeur de configuration dans une erreur, et
+    le prochain `-c` ajoute ici ne doit pas redecouvrir la fuite par une
+    capture d'ecran.
+    """
+    return _ENTETE_SECRETE.sub(r"\1***", texte)
+
+
 def _git(cwd: Path, *args: str, check: bool = True,
          env: dict[str, str] | None = None) -> str:
     r = subprocess.run(
@@ -41,7 +63,8 @@ def _git(cwd: Path, *args: str, check: bool = True,
         encoding="utf-8", errors="replace", timeout=300, env=env,
     )
     if check and r.returncode != 0:
-        raise GitError(f"git {' '.join(args)} : {(r.stderr or r.stdout).strip()}")
+        raise GitError(sans_secret(
+            f"git {' '.join(args)} : {(r.stderr or r.stdout).strip()}"))
     return r.stdout
 
 
@@ -176,10 +199,16 @@ def push(worktree: Path, *, token: str, remote: str = "origin",
          force: bool = False) -> str:
     """Pousse la branche du worktree. REFUSE une branche partagee et le force.
 
-    Le jeton est passe par un en-tete d'authentification EPHEMERE
-    (`-c http.extraheader=...`) plutot qu'ecrit dans l'URL du remote ou dans la
-    configuration : il ne survit donc pas a la commande, et n'apparait ni dans
-    `.git/config`, ni dans `git remote -v`, ni dans un journal de shell.
+    Le jeton est passe par l'ENVIRONNEMENT (`GIT_CONFIG_COUNT` et ses
+    compagnons), pas par `argv`. Il ne survit donc pas a la commande, et
+    n'apparait ni dans `.git/config`, ni dans `git remote -v`, ni dans
+    `/proc/<pid>/cmdline`.
+
+    Il passait par `-c http.extraheader=...` jusqu'au 31/08/2026. Un push
+    rejete recopiait alors `argv` dans son erreur, et le PAT complet
+    atterrissait dans le journal du demon — donc sur le disque, et dans la
+    console de qui regardait. La forme `-c` etait sure vis-a-vis de GIT ; elle
+    ne l'etait pas vis-a-vis de NOUS.
     """
     if force:
         raise GitError(
@@ -193,11 +222,19 @@ def push(worktree: Path, *, token: str, remote: str = "origin",
     # `AUTHORIZATION: basic <base64(x-access-token:JETON)>` est la forme que
     # GitHub attend pour un jeton en en-tete.
     import base64
+    import os
     entete = base64.b64encode(f"x-access-token:{token}".encode()).decode()
 
+    # Meme effet que `-c http.extraheader=...`, mais hors `argv`. Git lit ces
+    # variables depuis la 2.31 ; l'environnement herite du processus, donc
+    # `PATH` et le reste restent en place.
+    env = {
+        **os.environ,
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.extraheader",
+        "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {entete}",
+    }
     sortie = _git(
-        worktree,
-        "-c", f"http.extraheader=AUTHORIZATION: basic {entete}",
-        "push", "--set-upstream", remote, branche,
+        worktree, "push", "--set-upstream", remote, branche, env=env,
     )
     return sortie.strip() or f"{branche} poussee sur {remote}"
