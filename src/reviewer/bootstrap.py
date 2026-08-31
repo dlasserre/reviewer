@@ -190,6 +190,38 @@ def lister_depots(jeton: str, org: str) -> list[dict[str, Any]]:
 _NPM = ["typecheck", "lint", "test:ci", "test", "build"]
 
 
+def deviner_setup(chemin: Path) -> list[str]:
+    """Propose de quoi LANCER les verifications devinees juste a cote.
+
+    Deviner les commandes sans deviner leur outillage laisse une configuration
+    qui a l'air complete et meurt en « code 127 » au premier job — la panne du
+    30/08/2026 sur `backend#748`.
+
+    Cote Python : un VENV DANS LE DEPOT, jamais le Python du systeme. Dans un
+    conteneur qui tourne en utilisateur non privilegie, `site-packages` n'est
+    pas ecrivable, et le `pip install` echoue sans rien arreter.
+
+    `pip` n'est pas qualifie (`.venv/bin/pip`) parce que ce chemin n'est pas le
+    meme selon la plateforme (`Scripts` sous Windows). `assurer_outillage`
+    recalcule le PATH AVANT CHAQUE commande : le venv cree par la premiere est
+    donc sur le PATH de la suivante, et `pip` y resout tout seul.
+    """
+    out: list[str] = []
+    if (chemin / "package-lock.json").is_file():
+        out.append("npm ci --no-audit --no-fund")
+    elif (chemin / "package.json").is_file():
+        out.append("npm install --no-audit --no-fund")
+
+    requis = [r for r in ("requirements.txt", "requirements-dev.txt")
+              if (chemin / r).is_file()]
+    if requis:
+        out.append("python -m venv .venv")
+        out += [f"pip install --no-cache-dir -r {r}" for r in requis]
+    elif (chemin / "pyproject.toml").is_file():
+        out += ["python -m venv .venv", "pip install --no-cache-dir -e ."]
+    return out
+
+
 def deviner_checks(chemin: Path) -> list[str]:
     """Propose des verifications en lisant le depot. Jamais imposees.
 
@@ -434,6 +466,24 @@ def _yaml_profil(*, projet: str, org: str, workspace: Path, lecture: str,
                     "    # avoir ete valide localement. A completer.",
                     "    checks: []",
                 ]
+            if d.get("setup"):
+                lignes += [
+                    "    # De quoi LANCER les verifications ci-dessus, joue une fois",
+                    "    # sur la copie locale. Sans lui, elles meurent en « code",
+                    "    # 127 » — commande introuvable — et le rapport accuse le code.",
+                    "    setup:",
+                ]
+                lignes += [f"      - \"{c}\"" for c in d["setup"]]
+            lignes += [
+                "    # Fichiers d'environnement ecrits S'ILS MANQUENT (jamais",
+                "    # ecrases). Un clone nu n'a que ce que git suit : si les tests",
+                "    # de ce depot lisent des variables au chargement, les poser ici",
+                "    # evite un echec DE COLLECTE qui ressemble a un bug du code.",
+                "    # Valeurs de VERIFICATION uniquement — aucun secret reel.",
+                "    #   env_files:",
+                "    #     .env:",
+                "    #       APP_ENV: prod",
+            ]
         lignes.append("")
     return "\n".join(lignes).rstrip() + "\n"
 

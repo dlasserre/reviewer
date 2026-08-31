@@ -629,6 +629,23 @@ class RepoConfig(Strict):
     path: Path
     branches: list[str] = Field(default_factory=lambda: ["feat/*", "fix/*", "chore/*", "hotfix/*"])
     checks: list[str] = Field(default_factory=list)
+    # De quoi LANCER `checks`, joue sur la copie locale avant le premier job.
+    # Sans ca, une verification meurt en « code 127 » — commande introuvable —
+    # et le rapport dit « verifications rouges », ce qui envoie chercher un bug
+    # dans le code livre. Cf. `reviewer.repo.provision`.
+    #
+    # Un venv PAR DEPOT plutot que le Python du systeme : dans un conteneur qui
+    # tourne en utilisateur non privilegie, `site-packages` n'est pas ecrivable
+    # et le `pip install` echoue sans rien arreter.
+    setup: list[str] = Field(default_factory=list)
+    # Fichiers d'environnement ECRITS S'ILS MANQUENT — jamais ecrases : sur un
+    # poste de developpement, la copie locale porte le vrai `.env`. Un clone nu
+    # n'a que ce que git suit, or le backend lit `os.environ` a l'import : sans
+    # eux, pytest s'arrete a la COLLECTE, avant le moindre test.
+    #
+    # Aucun secret ici : ce sont des valeurs de VERIFICATION (base injoignable,
+    # secret de test). Un profil est un fichier lu par des humains.
+    env_files: dict[str, dict[str, str]] = Field(default_factory=dict)
     # Etiquettes posees sur les issues creees pour CE depot — sa « zone », au
     # sens ou beaucoup de projets l'entendent. Vide par defaut : une etiquette
     # qui n'existe pas sur le depot fait repondre 422 a GitHub, et un echec a

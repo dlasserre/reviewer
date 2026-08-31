@@ -42,9 +42,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-from reviewer.bootstrap import (API, deviner_checks, verifier_jeton,
-                                _yaml_profil, _yaml_runner)
+from reviewer.bootstrap import (API, deviner_checks, deviner_setup,
+                                verifier_jeton, _yaml_profil, _yaml_runner)
 from reviewer.output.setup_page import PAGE_SETUP
+from reviewer.repo.provision import assurer_outillage
 
 __all__ = ["FICHIER_SECRETS", "charger_secrets", "create_setup_app"]
 
@@ -277,6 +278,8 @@ def create_setup_app(chemin_runner: Path, *, port: int = 8788) -> FastAPI:
                     depots=[{"nom": d["nom"], "access": d["access"],
                              "path": str(espace / d["nom"]),
                              "checks": deviner_checks(espace / d["nom"])
+                             if d["access"] == "write" else [],
+                             "setup": deviner_setup(espace / d["nom"])
                              if d["access"] == "write" else []}
                             for d in inst.depots],
                     commit_login=login or None),
@@ -320,26 +323,22 @@ def create_setup_app(chemin_runner: Path, *, port: int = 8788) -> FastAPI:
 
         # Les dependances, devinees. Sans elles, les verifications echouent et
         # le demon refuse de commiter du code pourtant bon.
-        for etiquette, commande in _installations(cible):
-            dire("cours", f"{nom} — {etiquette}")
-            code, sortie = await _executer(commande, cwd=cible)
-            if code != 0:
-                dire("erreur", f"{nom} — {etiquette} : code {code}. "
-                               f"{sortie.strip()[-200:]}")
-            else:
-                dire("ok", f"{nom} — {etiquette}")
-
-    def _installations(depot: Path) -> list[tuple[str, list[str]]]:
-        out: list[tuple[str, list[str]]] = []
-        if (depot / "package-lock.json").is_file():
-            out.append(("npm ci", ["npm", "ci", "--no-audit", "--no-fund"]))
-        elif (depot / "package.json").is_file():
-            out.append(("npm install", ["npm", "install", "--no-audit", "--no-fund"]))
-        for req in ("requirements.txt", "requirements-dev.txt"):
-            if (depot / req).is_file():
-                out.append((f"pip {req}",
-                            ["pip", "install", "--no-cache-dir", "-r", req]))
-        return out
+        #
+        # PASSE PAR `assurer_outillage`, comme les jobs : c'est ce qui installe
+        # dans un VENV DU DEPOT au lieu du Python du systeme. Le `pip install`
+        # d'avant visait `site-packages`, que l'utilisateur du conteneur (uid
+        # 1000) ne peut pas ecrire — il echouait, la page affichait une ligne
+        # rouge qui defilait, et le premier job mourait en « code 127 ».
+        setup = deviner_setup(cible)
+        if not setup:
+            return
+        dire("cours", f"{nom} — outillage ({len(setup)} commande(s))")
+        resultat = await asyncio.to_thread(
+            assurer_outillage, cible, setup,
+            on_result=lambda ligne: dire("ok", f"{nom} — {ligne}"),
+        )
+        for commande, sortie in resultat.echouees:
+            dire("erreur", f"{nom} — {commande} : {sortie[-200:]}")
 
     async def _executer(commande: list[str], cwd: Path | None = None
                         ) -> tuple[int, str]:

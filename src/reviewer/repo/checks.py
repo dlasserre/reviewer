@@ -28,7 +28,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["CheckOutcome", "CheckReport", "outils_locaux", "run_checks"]
+__all__ = ["CheckOutcome", "CheckReport", "environnement", "outils_locaux",
+           "run_checks"]
 
 # Assez pour un resume de pytest ou une liste d'erreurs eslint, pas assez pour
 # noyer un journal.
@@ -109,8 +110,25 @@ class CheckOutcome:
             return f"{self.command} — n'a pas demarre : {self.error}"
         if self.timed_out:
             return f"{self.command} — TIMEOUT apres {self.duration_s:.0f} s"
+        if self.outil_absent:
+            # NOMME, parce que « ECHEC (code 127) » se lit comme un lint rouge
+            # et envoie chercher un bug dans le code livre. Mesure du
+            # 30/08/2026 sur `backend#748` : `ruff` n'etait pas installe dans
+            # le conteneur, et le rapport disait « verifications rouges ».
+            return (f"{self.command} — OUTIL INTROUVABLE (code 127) : le depot "
+                    "n'est pas outille, ce n'est pas le code qui echoue")
         etat = "vert" if self.ok else f"ECHEC (code {self.returncode})"
         return f"{self.command} — {etat} en {self.duration_s:.1f} s"
+
+    @property
+    def outil_absent(self) -> bool:
+        """127 = le shell n'a pas trouve la commande (`command not found`).
+
+        Ce n'est pas un echec de verification : c'est une capacite qui manque.
+        Les deux demandent des gestes opposes — corriger du code, ou installer
+        un outil — d'ou la distinction jusque dans le resume.
+        """
+        return self.returncode == 127
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +188,7 @@ def outils_locaux(cwd: Path) -> list[Path]:
     return out
 
 
-def _environnement(scrub: tuple[str, ...] | list[str], cwd: Path) -> dict[str, str]:
+def environnement(scrub: tuple[str, ...] | list[str], cwd: Path) -> dict[str, str]:
     """Environnement des verifications, sans les variables sensibles.
 
     `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` du SDK exige bubblewrap depuis la
@@ -219,7 +237,7 @@ def run_checks(
     if not cwd.is_dir():
         raise FileNotFoundError(f"repertoire de travail introuvable : {cwd}")
 
-    env = _environnement(scrub_env, cwd)
+    env = environnement(scrub_env, cwd)
     resultats: list[CheckOutcome] = []
     restantes = list(commands)
 
