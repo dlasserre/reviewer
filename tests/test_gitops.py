@@ -204,3 +204,53 @@ def test_les_motifs_proteges_se_reconnaissent_avec_des_antislashs():
     # peut porter des antislashs.
     d = Diff((r".github\workflows\ci.yml",))
     assert d.protected()
+
+
+# ── Le jeton ne doit jamais atteindre le journal ────────────────────────────
+
+
+def test_un_entete_d_autorisation_est_MASQUE():
+    """Le 31/08/2026, un push rejete a ecrit le PAT complet dans le journal.
+
+    `git -c http.extraheader=AUTHORIZATION: basic eC1hY2Nlc3MtdG9rZW46<PAT>`
+    — `eC1hY2Nlc3MtdG9rZW46` est `x-access-token:` en base64, donc la suite EST
+    le jeton. Ecrit sur le disque, rendu dans la console du navigateur.
+    """
+    from reviewer.repo.git import sans_secret
+
+    brut = ("git -c http.extraheader=AUTHORIZATION: basic "
+            "eC1hY2Nlc3MtdG9rZW46Z2l0aHViX3BhdF9TRUNSRVQ= push origin x")
+    propre = sans_secret(brut)
+
+    assert "Z2l0aHViX3BhdF9TRUNSRVQ=" not in propre
+    assert "eC1hY2Nlc3MtdG9rZW46" not in propre
+    # La CLE reste : un message qui ne dit plus de quoi il parle ne sert a rien.
+    assert "AUTHORIZATION" in propre
+    assert "push origin x" in propre
+
+
+def test_le_push_ne_met_PAS_le_jeton_dans_argv(monkeypatch, tmp_path):
+    """Meme masque, `argv` reste lisible par tout processus de la machine.
+
+    Le jeton passe donc par l'ENVIRONNEMENT (`GIT_CONFIG_*`), que seul le
+    processus voit.
+    """
+    import reviewer.repo.git as g
+
+    vus = {}
+
+    def faux_git(cwd, *args, check=True, env=None):
+        vus["args"] = args
+        vus["env"] = env or {}
+        return "ok"
+
+    monkeypatch.setattr(g, "_git", faux_git)
+    monkeypatch.setattr(g, "current_branch", lambda _w: "feat/x")
+
+    g.push(tmp_path, remote="origin", token="JETON-SECRET")
+
+    assert not any("JETON-SECRET" in a for a in vus["args"]),         "le jeton ne doit pas passer par argv"
+    assert not any("extraheader" in a for a in vus["args"])
+    # Il est bien transmis, par l'autre voie.
+    assert vus["env"].get("GIT_CONFIG_KEY_0") == "http.extraheader"
+    assert "AUTHORIZATION: basic " in vus["env"].get("GIT_CONFIG_VALUE_0", "")
