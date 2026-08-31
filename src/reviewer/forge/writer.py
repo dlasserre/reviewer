@@ -57,9 +57,13 @@ mutation($thread: ID!, $body: String!) {
 }
 """
 
+# `resolveReviewThread` — verifie contre le schema en direct le 31/08/2026.
+# `resolvePullRequestReviewThread` n'existe pas, et l'a jamais existe : la
+# faute a vecu tant qu'aucun test ne touchait ce document. Cf.
+# `test_les_mutations_existent_vraiment`.
 _RESOUDRE = """
 mutation($thread: ID!) {
-  resolvePullRequestReviewThread(input: {threadId: $thread}) {
+  resolveReviewThread(input: {threadId: $thread}) {
     thread { id isResolved }
   }
 }
