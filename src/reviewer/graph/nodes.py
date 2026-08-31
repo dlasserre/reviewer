@@ -148,6 +148,10 @@ async def decider(state: JobState, deps: Deps) -> dict:
         review_window_s=p.reviewers.nudge_after,
         nudge_enabled=bool(p.reviewers.nudge_comment),
         ignored_checks=compile_ignored(p.ignored_checks),
+        # Le noeud re-decide — VOULU : entre le balayage et le job, la forge a
+        # pu bouger. Mais il doit re-decider sur les MEMES entrees, et une
+        # demande de reprise en est une.
+        forced=state.get("forced", False),
         now=datetime.now(timezone.utc),
     )
 

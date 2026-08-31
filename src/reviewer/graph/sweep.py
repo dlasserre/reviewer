@@ -59,6 +59,10 @@ class Outcome:
     number: int
     decision: Decision
     snapshot: PullSnapshot
+    # Une personne a demande de reprendre CETTE PR. Voyage jusqu'au graphe,
+    # qui RE-DECIDE : sans lui, le job redecouvre le verrou que le forcage
+    # venait de lever, et meurt juste apres `decider`.
+    forced: bool = False
 
     @property
     def actionable(self) -> bool:
@@ -248,6 +252,9 @@ async def sweep_profile(
                 ), pull))
                 continue
 
+            # Lu UNE fois : la decision et l'Outcome doivent dire la meme
+            # chose, sans quoi le graphe re-deciderait sur d'autres entrees.
+            force = (nom, pull.number) in (forces or set())
             d = decide(
                 pull,
                 trusted_reviewers=trust,
@@ -258,10 +265,10 @@ async def sweep_profile(
                 # Un forcage demande depuis la console. `sweep_profile` ne le
                 # CONSOMME pas : c'est l'appelant qui tient le registre, et lui
                 # seul sait si le job a vraiment demarre.
-                forced=(nom, pull.number) in (forces or set()),
+                forced=force,
                 now=now,
             )
-            outcomes.append(Outcome(nom, pull.number, d, pull))
+            outcomes.append(Outcome(nom, pull.number, d, pull, forced=force))
 
             # On ne journalise PAS les etats inertes. Un `IDLE` par PR a chaque
             # passage noierait les trois lignes qui comptent — et le bilan de

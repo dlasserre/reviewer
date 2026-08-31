@@ -57,6 +57,9 @@ class JobState(TypedDict, total=False):
 
     # ── decide — la fonction pure des regles ────────────────────────────────
     decision: Decision
+    # Une personne a demande de reprendre cette PR depuis la console. Lu par
+    # `decider`, qui re-decide et retrouverait sinon le verrou deja leve.
+    forced: bool
 
     # ── admit — le portier : budget, puis bail ──────────────────────────────
     lease: Lease | None
@@ -105,6 +108,7 @@ def etat_initial(
     job_id: str,
     repo_path: str,
     write_token: str | None = None,
+    forced: bool = False,
 ) -> JobState:
     """Le point de depart. Rien d'autre n'est connu a ce stade.
 
@@ -118,6 +122,7 @@ def etat_initial(
         job_id=job_id,
         repo_path=repo_path,
         write_token=write_token,
+        forced=forced,
         derived=False,
         dry_run=False,
         pushed=False,
