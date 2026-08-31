@@ -200,3 +200,58 @@ def test_aucune_capacite_de_merge_ni_de_fermeture(geste):
     # etre appele ni par erreur, ni en detournant le prompt de l'agent.
     publiques = [n for n in dir(GitHubWriter) if not n.startswith("_")]
     assert not [n for n in publiques if geste in n.lower()], publiques
+
+
+# ── Les noms de mutation ────────────────────────────────────────────────────
+
+
+def test_les_mutations_existent_VRAIMENT_chez_github():
+    """Un nom de mutation faux ne leve QU'EN PRODUCTION.
+
+    Le faux transport des tests rend ce qu'on lui dit de rendre : il ne lit pas
+    le document. `resolvePullRequestReviewThread` a donc vecu ici jusqu'au
+    31/08/2026 — la reponse partait, la resolution echouait, et chaque remarque
+    corrigee restait comptee comme OUVERTE sur la forge. Un fil ouvert retient
+    le merge.
+
+    Cette liste a ete lue chez GitHub :
+
+        gh api graphql -f query='{ __type(name:"Mutation"){fields{name}} }'
+
+    L'egalite stricte est deliberee : si l'extraction cessait de trouver quoi
+    que ce soit, une simple inclusion passerait a vide. Ajouter un nom ici est
+    un GESTE — il vaut declaration qu'on est alle le verifier.
+    """
+    import re
+
+    from reviewer.forge import writer as w
+
+    CONNUES = {"addPullRequestReviewThreadReply", "resolveReviewThread"}
+
+    docs = [v for k, v in vars(w).items()
+            if k.isupper() and isinstance(v, str) and "mutation" in v]
+    assert docs, "aucun document GraphQL trouve : ce test ne prouve plus rien"
+
+    trouvees = set()
+    for d in docs:
+        trouvees |= set(re.findall(r"^\s+(\w+)\(input:", d, re.M))
+
+    assert trouvees == CONNUES, (
+        f"mutations du writer : {sorted(trouvees)}. Verifier chez GitHub avant "
+        f"de modifier CONNUES.")
+
+
+async def test_un_fil_resolu_appelle_la_BONNE_mutation():
+    # Le nom voyage jusqu'a la requete : un test qui n'inspecte que le retour
+    # du faux transport ne verrait pas une faute de frappe.
+    from reviewer.forge.writer import GitHubWriter  # noqa: F401
+
+    handler = _capteur({"data": {"resolveReviewThread": {
+        "thread": {"id": "PRRT_1", "isResolved": True}}}})
+    w = _writer(handler)
+    await w.resolve_thread("PRRT_1")
+
+    assert len(handler.vues) == 1
+    corps = handler.vues[0].content.decode()
+    assert "resolveReviewThread" in corps
+    assert "resolvePullRequestReviewThread" not in corps

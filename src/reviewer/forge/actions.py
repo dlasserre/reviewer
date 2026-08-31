@@ -269,18 +269,35 @@ async def publier_verdict(
             repondus += 1
             if v.outcome.needs_human:
                 demandes += 1
-            if v.outcome.resolves:
-                # Le fil resolu est ce qui compte comme solde, pas la reponse :
-                # un correctif pousse, argumente et vert dont le fil reste
-                # ouvert laisse la remarque comptee comme ouverte.
-                await writer.resolve_thread(t.id)
-                resolus += 1
         except ForgeError as e:
             journal.emit(Event(
                 event="job.reply_failed", profile=profile.project,
                 repository=repo, pull_request=pr,
                 why=f"fil {t.id[:12]}… : {e}",
             ))
+            continue
+
+        if v.outcome.resolves:
+            # Le fil resolu est ce qui compte comme solde, pas la reponse : un
+            # correctif pousse, argumente et vert dont le fil reste ouvert
+            # laisse la remarque comptee comme ouverte — et un fil ouvert
+            # retient le merge.
+            #
+            # SON PROPRE `try`, et son propre evenement. Partager celui de la
+            # reponse a cache une panne un mois durant : le nom de la mutation
+            # etait faux, la reponse partait, la resolution echouait, et le
+            # journal disait « reply_failed » — donc on cherchait du cote de la
+            # reponse, qui marchait.
+            try:
+                await writer.resolve_thread(t.id)
+                resolus += 1
+            except ForgeError as e:
+                journal.emit(Event(
+                    event="job.resolve_failed", profile=profile.project,
+                    repository=repo, pull_request=pr,
+                    why=f"fil {t.id[:12]}… REPONDU mais NON RESOLU : {e}. "
+                        "La remarque reste comptee comme ouverte sur la forge.",
+                ))
     return (repondus, resolus, demandes)
 
 
