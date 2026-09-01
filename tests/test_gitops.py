@@ -254,3 +254,90 @@ def test_le_push_ne_met_PAS_le_jeton_dans_argv(monkeypatch, tmp_path):
     # Il est bien transmis, par l'autre voie.
     assert vus["env"].get("GIT_CONFIG_KEY_0") == "http.extraheader"
     assert "AUTHORIZATION: basic " in vus["env"].get("GIT_CONFIG_VALUE_0", "")
+
+
+def _git_test(depot, *args):
+    import subprocess
+    r = subprocess.run(["git", *args], cwd=str(depot), capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    return r.stdout
+
+
+def _init(depot):
+    _git_test(depot, "init", "-q", "-b", "travail")
+
+
+# ── Les montages du demon ne partent pas dans un commit ─────────────────────
+
+
+def _indexer_un_lien(depot, nom: str, cible: str) -> None:
+    """Fabrique l'entree d'index d'un lien symbolique, sans lien sur le disque.
+
+    Mode `120000`, et le blob CONTIENT la cible — c'est exactement la forme que
+    git a poussee dans `dev` le 31/08. Passer par un vrai lien rendrait ce test
+    dependant des privileges Windows, donc absent la ou il compte le plus : sur
+    la machine qui livre.
+    """
+    import subprocess
+
+    sha = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=str(depot),
+                         input=cible, capture_output=True, text=True).stdout.strip()
+    _git_test(depot, "update-index", "--add", "--cacheinfo",
+              f"120000,{sha},{nom}")
+
+
+def test_un_lien_vers_l_exterieur_ne_peut_pas_etre_COMMITE(tmp_path):
+    """Le 31/08/2026, le demon a pousse `.venv` dans `dev`.
+
+    Un lien vers `/repos/backend/.venv` — un chemin qui n'existe que dans le
+    conteneur. Il serait arrive dans `main` a la release suivante.
+
+    Le `.gitignore` du depot ne l'a pas arrete : il dit `.venv/`, avec le
+    slash, donc « le REPERTOIRE .venv ». Le montage est un LIEN du meme nom.
+    """
+    from reviewer.repo.git import _liens_vers_l_exterieur
+
+    depot = tmp_path / "depot"
+    depot.mkdir()
+    _init(depot)
+    (depot / "fichier.py").write_text("x = 1\n", encoding="utf-8")
+    _git_test(depot, "add", "-A")
+
+    _indexer_un_lien(depot, ".venv", "/repos/backend/.venv")
+
+    assert _liens_vers_l_exterieur(depot) == [".venv"]
+
+
+def test_un_lien_INTERNE_reste_permis(tmp_path):
+    # Un depot peut legitimement versionner un lien vers l'un de ses propres
+    # fichiers. Le garde vise ce qui sort du worktree, pas les liens.
+    from reviewer.repo.git import _liens_vers_l_exterieur
+
+    depot = tmp_path / "depot-interne"
+    depot.mkdir()
+    _init(depot)
+    (depot / "reel.txt").write_text("x\n", encoding="utf-8")
+    _git_test(depot, "add", "-A")
+
+    _indexer_un_lien(depot, "alias.txt", "reel.txt")
+
+    assert _liens_vers_l_exterieur(depot) == []
+
+
+def test_le_travail_LEGITIME_passe_toujours(tmp_path):
+    # Le garde ne doit pas bloquer un depot ordinaire : sans ce pendant, on
+    # aurait pu casser tous les commits sans que rien ne le dise.
+    from reviewer.repo.git import commit_all
+
+    depot = tmp_path / "depot2"
+    depot.mkdir()
+    _init(depot)
+    (depot / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _git_test(depot, "add", "-A")
+    _git_test(depot, "-c", "user.name=T", "-c", "user.email=t@x",
+              "commit", "-qm", "feat(x): socle")
+
+    (depot / "a.py").write_text("x = 2\n", encoding="utf-8")
+    diff = commit_all(depot, "fix(x): un vrai correctif")
+
+    assert diff.files == ("a.py",)

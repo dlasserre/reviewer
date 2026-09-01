@@ -133,6 +133,30 @@ _SUJET_CONVENTIONNEL = re.compile(
     r"(\([\w./-]+\))?!?: .{3,}", re.IGNORECASE)
 
 
+def _liens_vers_l_exterieur(worktree: Path) -> list[str]:
+    """Chemins INDEXES qui sont des liens pointant hors du worktree.
+
+    Mode `120000` = lien symbolique ; son contenu blob EST la cible. On ne
+    resout pas le lien sur le disque : un lien casse doit etre attrape aussi,
+    et c'est justement celui qui voyage le plus mal.
+    """
+    liens = []
+    for ligne in _git(worktree, "ls-files", "-s").splitlines():
+        if not ligne.startswith("120000"):
+            continue
+        nom = ligne.split("\t", 1)[-1].strip()
+        cible = _git(worktree, "cat-file", "-p", f":{nom}", check=False).strip()
+        if not cible:
+            continue
+        chemin = Path(cible)
+        absolu = chemin if chemin.is_absolute() else (worktree / nom).parent / chemin
+        try:
+            absolu.resolve().relative_to(worktree.resolve())
+        except (ValueError, OSError):
+            liens.append(nom)
+    return liens
+
+
 def commit_all(worktree: Path, message: str, *,
                protected_refs: frozenset[str] | set[str] = BRANCHES_PARTAGEES,
                protected_globs: tuple[str, ...] = PROTECTED_GLOBS,
@@ -169,6 +193,22 @@ def commit_all(worktree: Path, message: str, *,
         )
 
     _git(worktree, "add", "-A")
+
+    # Un lien qui SORT du worktree ne designe rien chez les autres. Le demon en
+    # monte plusieurs (`.venv`, `node_modules`) vers sa copie locale ; le
+    # 31/08, `.venv` est parti dans `dev` en pointant vers `/repos/backend/.venv`
+    # — un chemin qui n'existe que dans le conteneur.
+    #
+    # `.gitignore` ne suffisait pas : celui de `backend` dit `.venv/`, avec le
+    # slash, donc « le repertoire ». Un lien du meme nom passe a cote.
+    if dehors := _liens_vers_l_exterieur(worktree):
+        _git(worktree, "reset", "-q", "--", *dehors, check=False)
+        raise GitError(
+            f"{len(dehors)} lien(s) sortant du worktree dans le diff : "
+            f"{', '.join(dehors)}. Ce sont des montages du demon, pas du "
+            "travail : ils ne designent rien sur une autre machine. Retires de "
+            "l'index, rien n'a ete commite."
+        )
 
     # L'identite est passee A LA COMMANDE (`-c`), pas ecrite dans la
     # configuration du depot. Deux raisons :

@@ -343,6 +343,45 @@ class WorktreeManager:
             )
         return self._monter_liens(cible, depot, repo, branch, base)
 
+    @staticmethod
+    def _rendre_invisibles(cible: Path, noms) -> None:
+        """Ajoute les montages du demon a `info/exclude` du worktree.
+
+        Silencieux en cas d'echec : ne pas pouvoir ecrire cette exclusion ne
+        justifie pas d'arreter un cycle. Le garde-fou de `commit_all` reste, et
+        lui refuse pour de bon.
+        """
+        try:
+            commun = (cible / ".git")
+            if commun.is_file():
+                # Worktree lie : `.git` est un fichier qui pointe vers le
+                # repertoire d'administration.
+                cible_gitdir = commun.read_text(encoding="utf-8").split(":", 1)[1].strip()
+                admin = Path(cible_gitdir)
+            else:
+                admin = commun
+            # `info/exclude` d'un worktree lie vit dans le depot PRINCIPAL, ce
+            # qui convient : les montages y sont les memes.
+            info = admin / "info"
+            if not info.is_dir():
+                # `commondir` designe le `.git` du depot principal.
+                cd = (admin / "commondir")
+                if cd.is_file():
+                    info = (admin / cd.read_text(encoding="utf-8").strip() / "info").resolve()
+            info.mkdir(parents=True, exist_ok=True)
+            fichier = info / "exclude"
+            deja = fichier.read_text(encoding="utf-8") if fichier.is_file() else ""
+            manquants = [n for n in noms if f"\n/{n}\n" not in f"\n{deja}\n"]
+            if manquants:
+                entete = "" if deja.endswith("\n") or not deja else "\n"
+                fichier.write_text(
+                    deja + entete
+                    + "# Montages du demon de revue — jamais commites.\n"
+                    + "".join(f"/{n}\n" for n in manquants),
+                    encoding="utf-8")
+        except OSError:
+            pass
+
     def _monter_liens(self, cible: Path, depot: Path, repo: str,
                       branch: str, base: str) -> Worktree:
         """Monte les jonctions vers les dossiers lourds ignores par git.
@@ -364,6 +403,18 @@ class WorktreeManager:
         `PreToolUse` l'interdit deja, mais une capacite absente vaut mieux
         qu'une capacite interdite.
         """
+        # Les montages du demon ne lui appartiennent pas moins parce qu'ils
+        # vivent dans le depot de quelqu'un : ils ne doivent JAMAIS entrer dans
+        # un commit. `.gitignore` ne suffit pas — celui de `backend` dit
+        # `.venv/`, avec le slash, donc « le repertoire ». Un LIEN nomme `.venv`
+        # passe a cote, et `git add -A` le stage. C'est arrive : le lien est
+        # parti dans `dev` le 31/08, pointant vers `/repos/backend/.venv`.
+        #
+        # `info/exclude` est local au depot, jamais commite, et vaut pour toutes
+        # les commandes git. L'exclure au moment du `add` n'aurait couvert qu'un
+        # appel.
+        self._rendre_invisibles(cible, [*self.copy_files, *self.link_dirs])
+
         montes: list[str] = []
         manquants: list[str] = []
         for nom in self.copy_files:
