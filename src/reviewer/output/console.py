@@ -216,6 +216,12 @@ PAGE = """<!doctype html>
   .cycle .haut, .cycle .bas { display: flex; align-items: center; gap: 7px; }
   .cycle .depot { font: 600 13px var(--mono); color: var(--encre); }
   .cycle .quand, .cycle .etapes { margin-left: auto; font: 10.5px var(--mono); color: var(--pale); }
+  /* Le nombre de passages d'un groupe. Colle au nom du depot — il le qualifie,
+     il n'est pas une donnee de plus alignee a droite. */
+  .cycle .fois {
+    font: 600 9.5px var(--mono); color: var(--cyan);
+    border: 1px solid var(--trait2); border-radius: 5px; padding: 1px 4px;
+  }
   .statut {
     font: 640 9.5px/1 var(--sans); text-transform: uppercase; letter-spacing: .1em;
     padding: 3px 7px; border-radius: 999px; border: 1px solid currentColor;
@@ -416,7 +422,7 @@ PAGE = """<!doctype html>
 
     <section class="panneau" style="flex: 1 1 auto;">
       <div class="entete">
-        <h2>Cycles</h2>
+        <h2>PR travaillees</h2>
         <div class="droite"><span class="jauge" id="compte">0</span></div>
       </div>
       <div class="cycles" id="cycles"><div class="vide">Aucun cycle.</div></div>
@@ -849,21 +855,52 @@ function visibles() {
     .sort((a, b) => (b.debut || "").localeCompare(a.debut || ""));
 }
 
-function lister() {
-  const boite = $("#cycles"), liste = visibles();
-  $("#compte").textContent = liste.length;
-  boite.textContent = "";
-  if (!liste.length) { boite.innerHTML = '<div class="vide">Aucun cycle.</div>'; return; }
+// Les cycles d'une MEME PR, du plus recent au plus ancien.
+//
+// `visibles()` rend un cycle par passage. Sur une PR que le demon reprend
+// toutes les cinq minutes, ca faisait 120 lignes identiques — et le travail
+// reel des autres depots enseveli dessous. Ce qu'on veut savoir d'une PR,
+// c'est son dernier etat et QUAND.
+function grouper(liste) {
+  const par = new Map();
   for (const j of liste) {
+    const cle = j.repo + "#" + j.pr;
+    if (!par.has(cle)) par.set(cle, []);
+    par.get(cle).push(j);
+  }
+  // `visibles()` est deja trie du plus recent au plus ancien : le premier de
+  // chaque groupe est donc le dernier cycle, et l'ordre des groupes suit celui
+  // de leur cycle le plus recent.
+  return [...par.entries()].map(([cle, cycles]) => ({cle, cycles}));
+}
+
+function lister() {
+  const boite = $("#cycles"), groupes = grouper(visibles());
+  // Le compteur porte le nombre de PR, pas de passages : c'est ce que la liste
+  // montre desormais, et deux nombres differents pour une meme liste se lisent
+  // comme un bug.
+  $("#compte").textContent = groupes.length;
+  boite.textContent = "";
+  if (!groupes.length) { boite.innerHTML = '<div class="vide">Aucun cycle.</div>'; return; }
+  for (const g of groupes) {
+    const j = g.cycles[0];                 // le plus recent
     const st = j.test ? "test" : j.statut;
+    const encours = g.cycles.some((x) => x.statut === "en_cours");
+    const choisiIci = g.cycles.some((x) => x.id === choisi);
     const b = document.createElement("button");
-    b.className = "cycle" + (j.statut === "en_cours" ? " vif" : "");
-    b.setAttribute("aria-selected", String(j.id === choisi));
+    b.className = "cycle" + (encours ? " vif" : "");
+    b.setAttribute("aria-selected", String(choisiIci));
+    // Le NOMBRE reste visible : vingt passages sur une PR n'est pas la meme
+    // situation qu'un seul, et c'est ce qu'on veut voir sans compter des lignes.
+    const combien = g.cycles.length > 1
+      ? `<span class="fois">&times;${g.cycles.length}</span>` : "";
     b.innerHTML =
-      `<div class="haut"><span class="depot">${j.repo}#${j.pr}</span>`
+      `<div class="haut"><span class="depot">${ech(g.cle)}</span>${combien}`
       + `<span class="quand">${quand(j.debut)}</span></div>`
-      + `<div class="bas"><span class="statut s-${st}">${MOT[st] || st}</span>`
+      + `<div class="bas"><span class="statut s-${ech(st)}">${ech(MOT[st] || st)}</span>`
       + `<span class="etapes">${j.chemin.length}/12</span></div>`;
+    // Ouvre le DERNIER cycle : c'est celui qu'on regarde quand on se demande
+    // ce qui se passe maintenant.
     b.onclick = () => { choisi = j.id; charger(j); };
     boite.appendChild(b);
   }
