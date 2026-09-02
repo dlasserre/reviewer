@@ -314,3 +314,46 @@ async def test_la_casse_du_login_n_exclut_personne(tmp_path):
     finally:
         store.close()
     assert [o.number for o in rapport.outcomes] == [1]
+
+
+# ── Le SHA deja prevenu est relu, comme le curseur ──────────────────────────
+
+
+async def test_le_SHA_deja_PREVENU_est_relu(atelier):
+    """LE test du defaut : 67 cycles a vide sur mobile#157.
+
+    Le job avait note « j'ai prevenu l'humain pour cette tete ». Sans relecture,
+    `decide` redemandait un arbitrage a chaque passage : le filtre laissait
+    passer, un job partait, prenait un BAIL, traversait le graphe et sortait
+    sans rien faire. Et tant que ce bail etait tenu, un clic sur « Reprendre »
+    etait refuse.
+
+    Il passe par `sweep_profile` REEL. Fabriquer la photo a la main laisserait
+    la projection non prouvee — c'est ce qui a fait vivre le defaut.
+    """
+    profil, store, journal = atelier
+    store.save_pull_state(PullState("essai", "backend", 727,
+                                    review_cycle=3, human_asked_sha="abc"))
+
+    rapport = await passer(atelier, [snapshot(head_sha="abc")])
+
+    (o,) = rapport.outcomes
+    assert o.decision.state is State.NEEDS_HUMAN
+    assert Action.ASK_HUMAN not in o.decision.actions,         "l'humain est deja prevenu pour cette tete : redemander lance un no-op"
+    # Et l'outcome n'appelle plus aucun passage. C'est LA condition qui arrete
+    # la boucle : `_run` ne retient que `o.actionable or ASK_HUMAN in actions`.
+    # Ecrite ici telle quelle — si ce filtre s'elargit un jour, ce test doit
+    # etre relu, pas suivre en silence.
+    assert not o.actionable
+    assert Action.ASK_HUMAN not in o.decision.actions
+
+
+async def test_une_TETE_NEUVE_fait_redemander(atelier):
+    # Le pendant : un nouveau commit, personne n'a ete prevenu de CELUI-la.
+    profil, store, journal = atelier
+    store.save_pull_state(PullState("essai", "backend", 727,
+                                    review_cycle=3, human_asked_sha="ancien"))
+
+    rapport = await passer(atelier, [snapshot(head_sha="abc")])
+
+    assert Action.ASK_HUMAN in rapport.outcomes[0].decision.actions

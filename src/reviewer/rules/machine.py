@@ -416,6 +416,11 @@ class PullSnapshot:
     review_cycle: int = 0
     last_handled_comment_id: int = 0
     nudge_sent: bool = False
+    # SHA pour lequel l'humain a deja ete prevenu. Vient de l'etat local, pas
+    # de la forge. Sans lui, `decide` redemandait un arbitrage a chaque
+    # passage : le job partait, arrivait au bout, constatait que la question
+    # etait deja posee, et sortait — toutes les cinq minutes.
+    human_asked_sha: str = ""
 
     def relevant_checks(self, ignored: re.Pattern[str] | None = None) -> tuple[Check, ...]:
         motif = ignored or _DEFAUT
@@ -545,6 +550,21 @@ def decide(
     # Il est legitime parce que le declencheur n'est plus un commentaire lu sur
     # la forge, mais une personne devant sa console.
     cycles_epuises = pr.review_cycle >= max_review_cycles and not forced
+
+    # L'humain a-t-il DEJA ete prevenu pour cette tete ? `prevenir` porte ce
+    # garde depuis toujours, mais tout au bout de la chaine : la decision
+    # redemandait un arbitrage a chaque passage, le filtre de `_run` laissait
+    # passer, un job partait et ne faisait rien. 67 cycles sur mobile#157.
+    #
+    # Un fait connu qui change ce qu'il y a a faire appartient a la DECISION.
+    # La branche « question en attente » n'emet deja que le label, et ne boucle
+    # pas ; celle-ci s'aligne. L'etat reste NEEDS_HUMAN — c'est vrai — seule
+    # l'action disparait une fois faite.
+    def _arret(raison: str, fils=()) -> Decision:
+        actes = (Action.LABEL_NEEDS_HUMAN,)
+        if not (pr.human_asked_sha and pr.human_asked_sha == pr.head_sha):
+            actes += (Action.ASK_HUMAN,)
+        return Decision(State.NEEDS_HUMAN, raison, actes, threads=fils)
     # Fils ou l'agent a pose une question et attend. Ils ne sont PAS du travail
     # (cf. `_fresh`), mais ils ne sont pas rien non plus : sans eux, une PR
     # entierement suspendue a un arbitrage se lirait « prete pour l'humain »,
@@ -570,11 +590,9 @@ def decide(
     if failed:
         noms = ", ".join(c.name for c in failed[:3])
         if cycles_epuises:
-            return Decision(
-                State.NEEDS_HUMAN,
+            return _arret(
                 f"{len(failed)} check(s) en echec ({noms}) et {pr.review_cycle} cycle(s) "
-                f"deja consommes : la cause n'est probablement pas celle qu'on croit.",
-                (Action.LABEL_NEEDS_HUMAN, Action.ASK_HUMAN),
+                f"deja consommes : la cause n'est probablement pas celle qu'on croit."
             )
         return Decision(
             State.NEEDS_FIX,
@@ -604,12 +622,10 @@ def decide(
                 threads=frais,
             )
         if cycles_epuises:
-            return Decision(
-                State.NEEDS_HUMAN,
+            return _arret(
                 f"{len(bloquants)} remarque(s) bloquante(s) apres {pr.review_cycle} cycle(s) : "
                 "la boucle ne converge pas.",
-                (Action.LABEL_NEEDS_HUMAN, Action.ASK_HUMAN),
-                threads=frais,
+                frais,
             )
         ou = ", ".join(
             f"{t.path}:{t.line}" for t in bloquants[:3] if t.path

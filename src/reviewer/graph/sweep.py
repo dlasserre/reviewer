@@ -136,6 +136,7 @@ def avec_etat_local(pull: PullSnapshot, store: StateStore, projet: str,
         review_cycle=etat.review_cycle,
         last_handled_comment_id=etat.last_handled_comment_id,
         nudge_sent=etat.nudge_sent,
+        human_asked_sha=etat.human_asked_sha,
     )
 
 

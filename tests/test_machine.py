@@ -451,3 +451,58 @@ def test_le_forcage_ne_fabrique_PAS_de_travail():
     p = pr(checks=(vert(),), threads=(), **FINI)
 
     assert Action.RUN_AGENT not in d(p, forced=True).actions
+
+
+# ── On ne redemande pas un arbitrage deja demande ───────────────────────────
+#
+# 67 cycles sur mobile#157, un toutes les cinq minutes, tous « INTERROMPU ».
+# `decide` reemettait `ASK_HUMAN` sans savoir que l'humain avait deja ete
+# prevenu : le filtre de `_run` laissait passer, un job partait, prenait un
+# BAIL, traversait le graphe et sortait sans rien faire — et tant que ce bail
+# etait tenu, un clic sur « Reprendre » etait REFUSE (409). Le no-op empechait
+# le geste cense debloquer la situation.
+
+
+def _epuisee(**kw) -> PullSnapshot:
+    """Cycles epuises et une remarque bloquante : l'arret nominal."""
+    base = dict(checks=(vert(),), threads=(fil(1),), review_cycle=3,
+                head_sha="0584d4e")
+    base.update(FINI)
+    base.update(kw)
+    return pr(**base)
+
+
+def test_le_PREMIER_passage_demande_l_arbitrage():
+    r = d(_epuisee())
+
+    assert r.state is State.NEEDS_HUMAN
+    assert Action.ASK_HUMAN in r.actions
+
+
+def test_une_fois_PREVENU_on_ne_redemande_plus():
+    # Le fait vient de l'etat local : `human_asked_sha` porte la tete pour
+    # laquelle la question est deja posee.
+    r = d(_epuisee(human_asked_sha="0584d4e"))
+
+    assert r.state is State.NEEDS_HUMAN, "l'etat reste vrai : ca attend un humain"
+    assert Action.ASK_HUMAN not in r.actions, \
+        "redemander lance un job qui ne fera rien, et son bail bloque la reprise"
+    assert Action.LABEL_NEEDS_HUMAN in r.actions
+
+
+def test_un_NOUVEAU_commit_fait_redemander():
+    # La tete a bouge : la question posee portait sur un autre arbre, et
+    # personne n'a ete prevenu de celui-ci.
+    r = d(_epuisee(head_sha="9999999", human_asked_sha="0584d4e"))
+
+    assert Action.ASK_HUMAN in r.actions
+
+
+def test_une_CI_ILLISIBLE_prevenue_ne_reboucle_pas_non_plus():
+    # Meme famille, autre branche : elle n'emettait deja que le label, donc
+    # elle ne bouclait pas. Ce test la fige — pour qu'un refactor de `_arret`
+    # ne l'aligne pas dans le mauvais sens.
+    r = d(pr(checks=(), checks_readable=False, head_sha="abc", **FINI))
+
+    assert r.state is State.NEEDS_HUMAN
+    assert Action.ASK_HUMAN not in r.actions
